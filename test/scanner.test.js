@@ -80,6 +80,20 @@ test("scanProject detects generic secret assignments in sensitive files", async 
   assert.equal(finding?.evidence, "SERVICE_TOKEN=[redacted]");
 });
 
+test("scanProject does not treat source files named secrets as sensitive files", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const sourceDir = path.join(root, "src", "scanners");
+  await mkdir(sourceDir, { recursive: true });
+  await writeFile(path.join(root, "AGENTS.md"), "# AGENTS.md\n", "utf8");
+  await writeFile(path.join(root, ".agentignore"), ".env\n", "utf8");
+  await writeFile(path.join(sourceDir, "secrets.js"), "export const name = 'secrets';\n", "utf8");
+
+  const result = await scanProject(root);
+  const ids = result.findings.map((finding) => finding.id);
+
+  assert.equal(ids.includes("secret.sensitive_filename"), false);
+});
+
 test("scanProject detects GitHub Actions permissions, inherited secrets, and risky run commands", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
   const workflowDir = path.join(root, ".github", "workflows");

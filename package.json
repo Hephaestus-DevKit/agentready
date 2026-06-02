@@ -14,6 +14,7 @@
     "AGENTS.md",
     ".agentignore",
     "README.md",
+    "CHANGELOG.md",
     "CONTRIBUTING.md",
     "SECURITY.md",
     "LICENSE"
@@ -25,6 +26,8 @@
     "rules": "node ./bin/agentready.js list-rules",
     "config:validate": "node ./bin/agentready.js config validate .",
     "pack:dry-run": "npm pack --dry-run",
+    "verify": "npm test && npm run scan:ci && npm run config:validate && npm run pack:dry-run",
+    "prepublishOnly": "npm run verify",
     "test": "node --test"
   },
   "keywords": [

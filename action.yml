@@ -1,0 +1,55 @@
+name: AgentReady
+description: Preflight security scan before AI coding agents access a repository.
+author: wangjiehu
+
+inputs:
+  path:
+    description: Project path to scan.
+    required: false
+    default: "."
+  fail-on:
+    description: Lowest severity that fails CI. Use high, medium, low, info, or none.
+    required: false
+    default: "medium"
+  format:
+    description: Output format. Use text, json, markdown, or sarif.
+    required: false
+    default: "text"
+  output:
+    description: Optional report output file.
+    required: false
+    default: ""
+  baseline:
+    description: Optional AgentReady baseline file.
+    required: false
+    default: ""
+  extra-args:
+    description: Additional AgentReady CLI arguments.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Run AgentReady
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        args=(scan "${{ inputs.path }}" --ci --fail-on "${{ inputs.fail-on }}" --format "${{ inputs.format }}")
+
+        if [ -n "${{ inputs.output }}" ]; then
+          args+=(--output "${{ inputs.output }}")
+        fi
+
+        if [ -n "${{ inputs.baseline }}" ]; then
+          args+=(--baseline "${{ inputs.baseline }}")
+        fi
+
+        # shellcheck disable=SC2206
+        extra_args=(${{ inputs.extra-args }})
+        args+=("${extra_args[@]}")
+
+        cli_path="$GITHUB_ACTION_PATH/bin/agentready.js"
+        node "$cli_path" version
+        node "$cli_path" "${args[@]}"

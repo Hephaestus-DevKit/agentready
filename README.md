@@ -131,6 +131,7 @@ from the scanned project root.
 - [Privacy](docs/PRIVACY.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
 - [Release checklist](docs/RELEASE.md)
+- [Changelog](CHANGELOG.md)
 
 ## Contributing and Security
 

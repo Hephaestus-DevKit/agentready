@@ -5,6 +5,33 @@ tooling is allowed to work on a repository.
 
 ## Basic GitHub Actions Job
 
+Using the composite action from this repository:
+
+```yaml
+name: agentready
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: wangjiehu/agentready@main
+        with:
+          fail-on: medium
+```
+
+Using `npx` directly:
+
 ```yaml
 name: agentready
 
@@ -70,6 +97,15 @@ Strict mode:
 ```bash
 agentready scan . --ci --fail-on medium
 ```
+
+## Composite Action Inputs
+
+- `path`: project path to scan, default `.`
+- `fail-on`: `high`, `medium`, `low`, `info`, or `none`
+- `format`: `text`, `json`, `markdown`, or `sarif`
+- `output`: optional report output path
+- `baseline`: optional baseline file path
+- `extra-args`: additional CLI arguments
 
 ## Configuration File
 

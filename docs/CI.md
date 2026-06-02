@@ -30,6 +30,10 @@ jobs:
           fail-on: medium
 ```
 
+The composite action runs the repository CLI with `node`, so self-hosted runners
+must provide Node.js 20 or newer. GitHub-hosted Ubuntu runners already include
+Node.js.
+
 Using `npx` directly:
 
 ```yaml
@@ -105,7 +109,7 @@ agentready scan . --ci --fail-on medium
 - `format`: `text`, `json`, `markdown`, or `sarif`
 - `output`: optional report output path
 - `baseline`: optional baseline file path
-- `extra-args`: additional CLI arguments
+- `config`: optional configuration file path
 
 ## Configuration File
 

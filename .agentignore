@@ -1,0 +1,11 @@
+# Paths AI coding agents should avoid unless explicitly approved.
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+*secret*
+*credential*
+private/
+backups/

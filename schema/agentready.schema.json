@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AgentReady configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "failOn": {
+      "type": "string",
+      "enum": ["high", "medium", "low", "info", "none"],
+      "default": "medium"
+    },
+    "baselinePath": {
+      "type": ["string", "null"],
+      "default": null
+    },
+    "ignorePaths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    },
+    "ignoreRules": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    },
+    "severityOverrides": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "enum": ["high", "medium", "low", "info"]
+      },
+      "default": {}
+    }
+  }
+}

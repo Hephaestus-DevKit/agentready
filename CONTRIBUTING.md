@@ -6,9 +6,7 @@ the CLI easy to run in local repositories and CI.
 ## Development
 
 ```bash
-npm test
-npm run scan:ci
-npm run pack:dry-run
+npm run verify
 ```
 
 No build step is required for the current JavaScript ESM implementation.
@@ -37,4 +35,13 @@ Rule ids should be stable after release because users may reference them in
 ## Pull Requests
 
 Keep pull requests focused. Include the command output for relevant verification
-such as `npm test` or `npm run scan:ci`.
+such as `npm run verify`.
+
+Use the pull request template and explain:
+
+- what changed
+- why it changed
+- user impact
+- verification performed
+
+For behavior changes, update the relevant docs in `docs/`.

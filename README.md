@@ -138,6 +138,7 @@ from the scanned project root.
 - [CI usage](docs/CI.md)
 - [Privacy](docs/PRIVACY.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
+- [Maintainer guide](docs/MAINTAINERS.md)
 - [Release checklist](docs/RELEASE.md)
 - [Changelog](CHANGELOG.md)
 

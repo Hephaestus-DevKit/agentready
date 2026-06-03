@@ -3,10 +3,7 @@
 Before publishing:
 
 ```bash
-npm test
-npm run scan:ci
-npm run config:validate
-npm run pack:dry-run
+npm run verify
 ```
 
 Verify:
@@ -18,3 +15,4 @@ Verify:
 - npm tarball includes docs and runtime files
 - no placeholder repository URLs are present
 - GitHub composite action still runs `bin/agentready.js`
+- pull request and issue templates still match the current maintenance process

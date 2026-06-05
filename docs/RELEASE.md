@@ -27,7 +27,7 @@ Verify:
 - pull request and issue templates still match the current maintenance process
 - GitHub `npm` environment and npm Trusted Publishing are configured as in
   [Repository settings](REPOSITORY_SETTINGS.md)
-- External launch steps are checked against [Next steps](../next_steps.md)
+- External launch steps are checked against [Next steps](../NEXT_STEPS.md)
 
 Publishing:
 

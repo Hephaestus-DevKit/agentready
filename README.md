@@ -228,7 +228,7 @@ from the scanned project root.
 - [CI usage](docs/CI.md)
 - [Supply chain](docs/SUPPLY_CHAIN.md)
 - [Repository settings](docs/REPOSITORY_SETTINGS.md)
-- [Next steps](next_steps.md)
+- [Next steps](NEXT_STEPS.md)
 - [Privacy](docs/PRIVACY.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
 - [Maintainer guide](docs/MAINTAINERS.md)

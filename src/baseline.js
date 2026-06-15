@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { SEVERITIES } from "./constants.js";
 import { configError } from "./errors.js";
+import { summarizeSeverities } from "./utils.js";
 
 export async function loadBaseline(root, baselinePath = null) {
   if (!baselinePath) {
@@ -228,17 +229,7 @@ function normalizeBaselineFindings(findings) {
     }));
 }
 
-function summarizeSeverities(findings) {
-  return findings.reduce(
-    (summary, finding) => {
-      if (Object.hasOwn(summary, finding.severity)) {
-        summary[finding.severity] += 1;
-      }
-      return summary;
-    },
-    { high: 0, medium: 0, low: 0, info: 0 }
-  );
-}
+// summarizeSeverities is imported from utils.js
 
 function countBy(findings, keyFn) {
   const counts = new Map();

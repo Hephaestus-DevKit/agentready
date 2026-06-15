@@ -5,7 +5,7 @@ import { DEFAULT_IGNORED_DIRS, MAX_FILE_BYTES, TEXT_EXTENSIONS, TEXT_FILE_NAMES 
 import { DEFAULT_CONFIG, applyFindingConfig, matchesAnyPath } from "./config.js";
 import { applyBaseline } from "./baseline.js";
 import { addFingerprints } from "./fingerprint.js";
-import { toRelative } from "./reporters.js";
+import { toRelative, summarizeSeverities } from "./utils.js";
 import { enrichFindings } from "./rules.js";
 import { MCP_CONFIG_NAMES, scanMcpConfig } from "./scanners/mcp.js";
 import { isSensitivePath, scanSecretContent, scanSensitiveFileName } from "./scanners/secrets.js";
@@ -16,6 +16,9 @@ import { scanPythonProjectFiles } from "./scanners/python.js";
 
 export async function scanProject(root, options = {}) {
   const startedAt = Date.now();
+  if (!existsSync(root)) {
+    throw new Error(`Scan target does not exist: ${root}`);
+  }
   const config = options.config || DEFAULT_CONFIG;
   const collected = await collectFiles(root, config);
   const files = collected.files;
@@ -23,22 +26,29 @@ export async function scanProject(root, options = {}) {
 
   findings.push(...scanProjectLevel(root));
 
-  for (const filePath of files) {
-    const relativePath = toRelative(root, filePath);
-    const basename = path.basename(filePath);
-    const content = await readTextFile(filePath);
-
-    if (content === null) {
-      continue;
+  const BATCH_SIZE = 32;
+  for (let i = 0; i < files.length; i += BATCH_SIZE) {
+    const batch = files.slice(i, i + BATCH_SIZE);
+    const results = await Promise.all(batch.map(async (filePath) => {
+      const relativePath = toRelative(root, filePath);
+      const basename = path.basename(filePath);
+      const content = await readTextFile(filePath);
+      if (content === null) {
+        return [];
+      }
+      return [
+        ...scanSensitiveFileName(relativePath, basename),
+        ...scanSecretContent(relativePath, basename, content),
+        ...scanDangerousShell(relativePath, content),
+        ...scanPackageJson(relativePath, basename, content),
+        ...scanGitHubActions(relativePath, content),
+        ...scanMcpConfig(relativePath, basename, content),
+        ...scanPythonProjectFiles(relativePath, basename, content)
+      ];
+    }));
+    for (const batchResult of results) {
+      findings.push(...batchResult);
     }
-
-    findings.push(...scanSensitiveFileName(relativePath, basename));
-    findings.push(...scanSecretContent(relativePath, basename, content));
-    findings.push(...scanDangerousShell(relativePath, content));
-    findings.push(...scanPackageJson(relativePath, basename, content));
-    findings.push(...scanGitHubActions(relativePath, content));
-    findings.push(...scanMcpConfig(relativePath, basename, content));
-    findings.push(...scanPythonProjectFiles(relativePath, basename, content));
   }
 
   const configuredFindings = addFingerprints(enrichFindings(applyFindingConfig(dedupeFindings(findings), config)));
@@ -63,7 +73,7 @@ export async function scanProject(root, options = {}) {
     configWarnings: options.configWarnings || [],
     baseline: baselineResult.summary,
     findings: baselineResult.findings,
-    summary: summarize(baselineResult.findings)
+    summary: summarizeSeverities(baselineResult.findings)
   };
 }
 
@@ -88,6 +98,8 @@ async function collectFiles(root, config) {
       return;
     }
 
+    const subdirs = [];
+
     for (const entry of entries) {
       const fullPath = path.join(current, entry.name);
       const relativePath = toRelative(root, fullPath);
@@ -102,7 +114,7 @@ async function collectFiles(root, config) {
           skipped.ignoredDirectory += 1;
           continue;
         }
-        await walk(fullPath);
+        subdirs.push(fullPath);
         continue;
       }
 
@@ -117,6 +129,8 @@ async function collectFiles(root, config) {
         skipped[textCheck.reason] += 1;
       }
     }
+
+    await Promise.all(subdirs.map((dir) => walk(dir)));
   }
 
   await walk(root);
@@ -263,15 +277,4 @@ function dedupeFindings(findings) {
   return deduped;
 }
 
-function summarize(findings) {
-  return findings.reduce(
-    (summary, finding) => {
-      // Guard against unknown severity values to avoid NaN
-      if (Object.hasOwn(summary, finding.severity)) {
-        summary[finding.severity] += 1;
-      }
-      return summary;
-    },
-    { high: 0, medium: 0, low: 0, info: 0 }
-  );
-}
+

@@ -1,3 +1,5 @@
+import { escapeMarkdown } from "./utils.js";
+
 export const RULE_CATALOG = [
   rule("agent.missing_agents_md", "info", "AGENTS.md is missing", "Create AGENTS.md to document safe AI agent operating boundaries."),
   rule("agent.missing_agentignore", "low", ".agentignore is missing", "Create .agentignore to mark sensitive paths agents should avoid."),
@@ -42,6 +44,11 @@ export const RULE_CATALOG = [
   rule("mcp.remote_url", "medium", "MCP configuration references a remote server URL", "Review remote MCP servers before exposing agent tools or repository context."),
   rule("mcp.private_network_url", "medium", "MCP configuration references a private network URL", "Limit MCP access to private network services unless the service is intended for agent use."),
   rule("mcp.metadata_endpoint", "high", "MCP configuration references a cloud metadata endpoint", "Remove metadata endpoint access from MCP configuration and review credential exposure."),
+  rule("secret.stripe_key", "high", "Stripe live API key is present", "Rotate the key and move it to scoped secret storage."),
+  rule("secret.google_api_key", "high", "Google API key is present", "Restrict the key scope and move it to secret storage."),
+  rule("secret.slack_token", "high", "Slack token is present", "Rotate the token and use scoped secret storage."),
+  rule("secret.slack_app_token", "high", "Slack app-level token is present", "Rotate the token and use scoped secret storage."),
+  rule("secret.jwt_token", "medium", "Hardcoded JWT token detected", "Tokens should be generated dynamically, not stored in source files."),
   rule("python.unpinned_requirement", "low", "Unpinned Python dependency", "Pin dependency versions for reproducible agent and CI runs."),
   rule("python.missing_requires_python", "info", "pyproject.toml does not declare requires-python", "Declare supported Python versions."),
   rule("doctor.node", "info", "Node.js runtime", "Use Node.js 20 or newer."),
@@ -153,6 +160,4 @@ function whyForCategory(category) {
   return descriptions[category] || "This finding affects the safety or reproducibility of AI-assisted development.";
 }
 
-function escapeMarkdown(value) {
-  return String(value).replaceAll("|", "\\|").replaceAll("\n", " ");
-}
+// escapeMarkdown is imported from utils.js

@@ -4,6 +4,7 @@ import path from "node:path";
 import { MAX_FILE_BYTES, SEVERITIES } from "./constants.js";
 import { configError, usageError } from "./errors.js";
 import { RULE_CATALOG } from "./rules.js";
+import { escapeRegExp } from "./scanners/utils.js";
 
 export const CONFIG_FILE_NAMES = ["agentready.config.json", ".agentready.json"];
 // Re-export as SEVERITY_ORDER for backward compatibility; SEVERITIES from constants is canonical
@@ -261,7 +262,7 @@ function matchPath(pattern, relativePath) {
     return false;
   }
 
-  if (!normalizedPattern.includes("*")) {
+  if (!normalizedPattern.includes("*") && !normalizedPattern.includes("?")) {
     return normalizedPath === normalizedPattern || normalizedPath.startsWith(`${normalizedPattern}/`);
   }
 
@@ -295,15 +296,20 @@ function globToRegExp(pattern) {
       continue;
     }
 
+    if (char === "?") {
+      source += "[^/]";
+      continue;
+    }
+
     source += escapeRegExp(char);
   }
 
   return new RegExp(`^${source}$`);
 }
 
-function escapeRegExp(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
+// escapeRegExp is imported from scanners/utils.js
+
+
 
 function assertKnownRule(rule, optionName) {
   if (typeof rule !== "string" || !rule.trim()) {

@@ -1,5 +1,5 @@
 import { classifyDangerousCommand } from "./shell.js";
-import { redact } from "./utils.js";
+import { escapeRegExp, redact } from "./utils.js";
 
 export function scanGitHubActions(relativePath, content) {
   if (!relativePath.startsWith(".github/workflows/") || !/\.(?:yml|yaml)$/i.test(relativePath)) {
@@ -337,12 +337,15 @@ function hasPullRequestTrigger(triggers) {
   return triggers.has("pull_request") || triggers.has("pull_request_target");
 }
 
-function containsWord(value, word) {
-  return new RegExp(`(^|[^A-Za-z0-9_-])${escapeRegExp(word)}([^A-Za-z0-9_-]|$)`).test(value);
-}
+const wordRegExpCache = new Map();
 
-function escapeRegExp(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function containsWord(value, word) {
+  let re = wordRegExpCache.get(word);
+  if (!re) {
+    re = new RegExp(`(^|[^A-Za-z0-9_-])${escapeRegExp(word)}([^A-Za-z0-9_-]|$)`);
+    wordRegExpCache.set(word, re);
+  }
+  return re.test(value);
 }
 
 function getIndent(line) {

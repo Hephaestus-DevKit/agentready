@@ -2,6 +2,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { SEVERITIES } from "./constants.js";
 import { RULE_CATALOG } from "./rules.js";
+import { toRelative as utilToRelative, sortFindings, escapeMarkdown } from "./utils.js";
 
 const TOOL_INFORMATION_URI = "https://github.com/wangjiehu/agentready";
 const RULE_HELP_URI = `${TOOL_INFORMATION_URI}/blob/main/docs/RULES.md`;
@@ -444,20 +445,7 @@ function categoriesFor(findings) {
   return [...new Set(findings.map((finding) => finding.category || "general"))].sort();
 }
 
-function sortFindings(findings) {
-  const rank = new Map(SEVERITIES.map((severity, index) => [severity, index]));
-  return [...findings].sort((left, right) => {
-    const severityDelta = rank.get(left.severity) - rank.get(right.severity);
-    if (severityDelta !== 0) {
-      return severityDelta;
-    }
-    const fileDelta = String(left.file || "").localeCompare(String(right.file || ""));
-    if (fileDelta !== 0) {
-      return fileDelta;
-    }
-    return (left.line || 0) - (right.line || 0);
-  });
-}
+// sortFindings is imported from utils.js
 
 function formatLocation(finding) {
   if (!finding.file) {
@@ -466,9 +454,7 @@ function formatLocation(finding) {
   return finding.line ? `${finding.file}:${finding.line}` : finding.file;
 }
 
-function escapeMarkdown(value) {
-  return String(value).replaceAll("|", "\\|").replaceAll("\n", " ");
-}
+// escapeMarkdown is imported from utils.js
 
 function formatConfigPath(config = {}) {
   return config.configPath || "(defaults)";
@@ -490,9 +476,8 @@ function statusLabel(summary) {
   return "ready";
 }
 
-export function toRelative(root, filePath) {
-  return path.relative(root, filePath).replaceAll("\\", "/");
-}
+// Re-exported from utils.js for backward compatibility
+export { utilToRelative as toRelative };
 
 function formatDuration(durationMs) {
   if (typeof durationMs !== "number") {

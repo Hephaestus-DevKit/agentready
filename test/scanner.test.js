@@ -648,3 +648,60 @@ test("scanProject reports pull_request_target block trigger once", async () => {
   assert.equal(findings.length, 1);
   assert.equal(findings[0].file, ".github/workflows/block.yml");
 });
+
+test("scanProject detects Stripe live API keys", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  await writeFile(path.join(root, "AGENTS.md"), "# Agents", "utf8");
+  await writeFile(path.join(root, ".agentignore"), ".env\n", "utf8");
+  await writeFile(path.join(root, "config.js"), "const key = \"" + "sk_live_" + "abcdefghijklmnopqrstuvwx\";\n", "utf8");
+
+  const result = await scanProject(root);
+  const ids = result.findings.map((f) => f.id);
+  assert.ok(ids.includes("secret.stripe_key"), "should detect Stripe live key");
+});
+
+test("scanProject detects Google API keys", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  await writeFile(path.join(root, "AGENTS.md"), "# Agents", "utf8");
+  await writeFile(path.join(root, ".agentignore"), ".env\n", "utf8");
+  await writeFile(path.join(root, "config.js"), "const key = \"" + "AIzaSy" + "A1234567890abcdefghijklmnopqrstuv\";\n", "utf8");
+
+  const result = await scanProject(root);
+  const ids = result.findings.map((f) => f.id);
+  assert.ok(ids.includes("secret.google_api_key"), "should detect Google API key");
+});
+
+test("scanProject detects Slack bot tokens", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  await writeFile(path.join(root, "AGENTS.md"), "# Agents", "utf8");
+  await writeFile(path.join(root, ".agentignore"), ".env\n", "utf8");
+  await writeFile(
+    path.join(root, "config.js"),
+    "const token = \"" + "xoxb-" + "1234567890-" + "1234567890123-" + "abcdefghijklmnopqrstuvwx\";\n",
+    "utf8"
+  );
+
+  const result = await scanProject(root);
+  const ids = result.findings.map((f) => f.id);
+  assert.ok(ids.includes("secret.slack_token"), "should detect Slack bot token");
+});
+
+test("scanProject detects hardcoded JWT tokens", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  await writeFile(path.join(root, "AGENTS.md"), "# Agents", "utf8");
+  await writeFile(path.join(root, ".agentignore"), ".env\n", "utf8");
+  // Minimal valid-looking JWT
+  const jwt = "eyJ" + "hbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c";
+  await writeFile(path.join(root, "auth.js"), `const token = "${jwt}";\n`, "utf8");
+
+  const result = await scanProject(root);
+  const ids = result.findings.map((f) => f.id);
+  assert.ok(ids.includes("secret.jwt_token"), "should detect JWT token");
+});
+
+test("scanProject rejects non-existent scan target", async () => {
+  await assert.rejects(
+    () => scanProject("/non/existent/path/agentready-test-" + Date.now()),
+    /Scan target does not exist/
+  );
+});

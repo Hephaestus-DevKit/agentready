@@ -11,6 +11,7 @@ import { formatBaselineDebt, formatBaselineDiff, formatJson, formatMarkdown, for
 import { formatRules, RULE_CATALOG } from "./rules.js";
 import { scanProject } from "./scanner.js";
 import { SEVERITIES } from "./constants.js";
+import { sortFindings } from "./utils.js";
 
 const HELP = `AgentReady - preflight security scanner for AI coding agents
 
@@ -644,7 +645,7 @@ function parseOptions(args) {
 function readOptionValue(args, index, optionName) {
   const value = args[index + 1];
 
-  if (!value || value.startsWith("--")) {
+  if (value === undefined || value.startsWith("--")) {
     throw usageError(`${optionName} requires a value.`);
   }
 
@@ -683,7 +684,7 @@ function applyReportOptions(result, options) {
 
   const findings = options.summaryOnly
     ? []
-    : sortedFindings(result.findings).slice(0, options.maxFindings ?? totalFindings);
+    : sortFindings(result.findings).slice(0, options.maxFindings ?? totalFindings);
 
   return {
     ...result,
@@ -699,27 +700,20 @@ function applyReportOptions(result, options) {
   };
 }
 
-function sortedFindings(findings) {
-  const rank = new Map(SEVERITIES.map((severity, index) => [severity, index]));
-  return [...findings].sort((left, right) => {
-    const severityDelta = rank.get(left.severity) - rank.get(right.severity);
-    if (severityDelta !== 0) {
-      return severityDelta;
-    }
-    const fileDelta = String(left.file || "").localeCompare(String(right.file || ""));
-    if (fileDelta !== 0) {
-      return fileDelta;
-    }
-    return (left.line || 0) - (right.line || 0);
-  });
-}
+
 
 function resolveBaselinePathOption(target, options, config) {
   return options.baseline || config.baselinePath || path.join(target, ".agentready-baseline.json");
 }
 
+let cachedVersion = null;
+
 async function readVersion() {
+  if (cachedVersion) {
+    return cachedVersion;
+  }
   const packagePath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "package.json");
   const parsed = JSON.parse(await readFile(packagePath, "utf8"));
-  return parsed.version;
+  cachedVersion = parsed.version;
+  return cachedVersion;
 }

@@ -40,6 +40,36 @@ const SECRET_PATTERNS = [
     pattern: /\bAKIA[0-9A-Z]{16}\b/,
     title: "AWS access key-like value is present",
     recommendation: "Rotate the key, remove it from the repository, and use scoped secret storage."
+  },
+  {
+    id: "secret.stripe_key",
+    pattern: /\bsk_live_[A-Za-z0-9]{24,}\b/,
+    title: "Stripe live API key is present",
+    recommendation: "Rotate the Stripe key and move it to scoped secret storage."
+  },
+  {
+    id: "secret.google_api_key",
+    pattern: /\bAIzaSy[A-Za-z0-9_-]{33}\b/,
+    title: "Google API key is present",
+    recommendation: "Restrict the API key scope in Google Cloud Console and move it to secret storage."
+  },
+  {
+    id: "secret.slack_token",
+    pattern: /\bxoxb-[0-9]{10,13}-[0-9]{10,13}-[A-Za-z0-9]{20,}\b/,
+    title: "Slack bot token is present",
+    recommendation: "Rotate the Slack token and use scoped secret storage."
+  },
+  {
+    id: "secret.slack_app_token",
+    pattern: /\bxapp-[0-9]-[A-Za-z0-9]+-[0-9]+-[A-Za-z0-9]+\b/,
+    title: "Slack app-level token is present",
+    recommendation: "Rotate the Slack app token and use scoped secret storage."
+  },
+  {
+    id: "secret.jwt_token",
+    pattern: /\beyJ[A-Za-z0-9_-]{20,}\.eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]+\b/,
+    title: "Hardcoded JWT token detected",
+    recommendation: "Remove hardcoded JWT tokens; generate them dynamically at runtime."
   }
 ];
 

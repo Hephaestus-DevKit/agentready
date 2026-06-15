@@ -175,3 +175,19 @@ test("loadConfig handles non-object configuration roots", async () => {
   assert.equal(config.failOn, "medium");
   assert.deepEqual(warnings, ["Configuration root must be an object; defaults were used."]);
 });
+
+test("matchesAnyPath supports ? single-character wildcard", () => {
+  assert.ok(matchesAnyPath(["src/?.js"], "src/a.js"));
+  assert.ok(!matchesAnyPath(["src/?.js"], "src/ab.js"));
+  assert.ok(matchesAnyPath(["test-?.txt"], "test-1.txt"));
+  assert.ok(!matchesAnyPath(["test-?.txt"], "test-12.txt"));
+});
+
+test("matchesAnyPath ? does not match path separator", () => {
+  assert.ok(!matchesAnyPath(["src?file.js"], "src/file.js"));
+});
+
+test("matchesAnyPath handles combined ** and ? patterns", () => {
+  assert.ok(matchesAnyPath(["**/?.js"], "deep/nested/a.js"));
+  assert.ok(!matchesAnyPath(["**/?.js"], "deep/nested/ab.js"));
+});

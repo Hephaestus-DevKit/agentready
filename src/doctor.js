@@ -4,6 +4,7 @@ import path from "node:path";
 import { scanProject } from "./scanner.js";
 import { addFingerprints } from "./fingerprint.js";
 import { enrichFindings } from "./rules.js";
+import { summarizeSeverities } from "./utils.js";
 
 export async function runDoctor(root, options = {}) {
   const result = await scanProject(root, options);
@@ -54,7 +55,7 @@ export async function runDoctor(root, options = {}) {
     configWarnings: result.configWarnings,
     baseline: result.baseline,
     findings,
-    summary: summarize(findings)
+    summary: summarizeSeverities(findings)
   };
 }
 
@@ -83,15 +84,4 @@ function findGitRoot(root) {
   }
 }
 
-function summarize(findings) {
-  return findings.reduce(
-    (summary, finding) => {
-      // Guard against unknown severity values to avoid NaN
-      if (Object.hasOwn(summary, finding.severity)) {
-        summary[finding.severity] += 1;
-      }
-      return summary;
-    },
-    { high: 0, medium: 0, low: 0, info: 0 }
-  );
-}
+

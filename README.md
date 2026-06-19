@@ -7,9 +7,9 @@ Preflight security checks before you give Claude Code, Codex, Cursor, MCP
 tooling, or another AI coding agent access to a software project.
 
 ```bash
-npx agentready quickstart .
-npx agentready scan .
-npx agentready badge .
+npx @wangjiehu/agentready quickstart .
+npx @wangjiehu/agentready scan .
+npx @wangjiehu/agentready badge .
 ```
 
 AgentReady runs locally. It does not upload your code, findings, baseline, or
@@ -78,17 +78,17 @@ Next steps:
 Start without installing:
 
 ```bash
-npx agentready quickstart .
-npx agentready scan .
-pnpm dlx agentready scan .
-yarn dlx agentready scan .
-bunx agentready scan .
+npx @wangjiehu/agentready quickstart .
+npx @wangjiehu/agentready scan .
+pnpm dlx @wangjiehu/agentready scan .
+yarn dlx @wangjiehu/agentready scan .
+bunx @wangjiehu/agentready scan .
 ```
 
 Install in a project:
 
 ```bash
-npm install -D agentready
+npm install -D @wangjiehu/agentready
 npx agentready scan .
 ```
 

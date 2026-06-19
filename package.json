@@ -1,5 +1,5 @@
 {
-  "name": "agentready",
+  "name": "@wangjiehu/agentready",
   "version": "1.0.0",
   "description": "Preflight security scanner for AI coding agent access to software projects.",
   "type": "module",

@@ -1,6 +1,6 @@
 name: AgentReady
 description: Preflight security scan before AI coding agents access a repository.
-author: wangjiehu
+author: occ-tools
 
 inputs:
   path:

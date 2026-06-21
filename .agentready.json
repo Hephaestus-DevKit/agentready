@@ -1,5 +1,5 @@
 {
-  "$schema": "https://raw.githubusercontent.com/wangjiehu/agentready/main/schema/agentready.schema.json",
+  "$schema": "https://raw.githubusercontent.com/occ-tools/agentready/main/schema/agentready.schema.json",
   "baselinePath": null,
   "failOn": "medium",
   "ignorePaths": ["test/fixtures/**", "src/scanners/utils.js", "test/fingerprint.test.js"],

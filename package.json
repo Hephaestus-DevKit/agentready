@@ -1,5 +1,5 @@
 {
-  "name": "@wangjiehu/agentready",
+  "name": "@occ-tools/agentready",
   "version": "1.0.1",
   "description": "Preflight security scanner for AI coding agent access to software projects.",
   "type": "module",
@@ -49,13 +49,13 @@
     "devtools",
     "preflight"
   ],
-  "homepage": "https://github.com/wangjiehu/agentready#readme",
+  "homepage": "https://github.com/occ-tools/agentready#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/wangjiehu/agentready.git"
+    "url": "git+https://github.com/occ-tools/agentready.git"
   },
   "bugs": {
-    "url": "https://github.com/wangjiehu/agentready/issues"
+    "url": "https://github.com/occ-tools/agentready/issues"
   },
   "license": "MIT",
   "engines": {

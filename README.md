@@ -7,9 +7,9 @@ Preflight security checks before you give Claude Code, Codex, Cursor, MCP
 tooling, or another AI coding agent access to a software project.
 
 ```bash
-npx @wangjiehu/agentready quickstart .
-npx @wangjiehu/agentready scan .
-npx @wangjiehu/agentready badge .
+npx @occ-tools/agentready quickstart .
+npx @occ-tools/agentready scan .
+npx @occ-tools/agentready badge .
 ```
 
 AgentReady runs locally. It does not upload your code, findings, baseline, or
@@ -78,17 +78,17 @@ Next steps:
 Start without installing:
 
 ```bash
-npx @wangjiehu/agentready quickstart .
-npx @wangjiehu/agentready scan .
-pnpm dlx @wangjiehu/agentready scan .
-yarn dlx @wangjiehu/agentready scan .
-bunx @wangjiehu/agentready scan .
+npx @occ-tools/agentready quickstart .
+npx @occ-tools/agentready scan .
+pnpm dlx @occ-tools/agentready scan .
+yarn dlx @occ-tools/agentready scan .
+bunx @occ-tools/agentready scan .
 ```
 
 Install in a project:
 
 ```bash
-npm install -D @wangjiehu/agentready
+npm install -D @occ-tools/agentready
 npx agentready scan .
 ```
 
@@ -155,7 +155,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
-      - uses: wangjiehu/agentready@v1
+      - uses: occ-tools/agentready@v1
         with:
           fail-on: medium
           format: sarif
@@ -235,7 +235,7 @@ from the scanned project root.
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/wangjiehu/agentready/main/schema/agentready.schema.json",
+  "$schema": "https://raw.githubusercontent.com/occ-tools/agentready/main/schema/agentready.schema.json",
   "baselinePath": ".agentready-baseline.json",
   "failOn": "medium",
   "ignorePaths": ["fixtures/**"],

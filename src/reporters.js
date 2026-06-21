@@ -4,7 +4,7 @@ import { SEVERITIES } from "./constants.js";
 import { RULE_CATALOG } from "./rules.js";
 import { toRelative as utilToRelative, sortFindings, escapeMarkdown } from "./utils.js";
 
-const TOOL_INFORMATION_URI = "https://github.com/wangjiehu/agentready";
+const TOOL_INFORMATION_URI = "https://github.com/occ-tools/agentready";
 const RULE_HELP_URI = `${TOOL_INFORMATION_URI}/blob/main/docs/RULES.md`;
 const SKIP_REASON_LABELS = {
   ignoredPath: "ignored-path",

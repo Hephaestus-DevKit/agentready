@@ -13,7 +13,7 @@ Example:
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/wangjiehu/agentready/main/schema/agentready.schema.json",
+  "$schema": "https://raw.githubusercontent.com/occ-tools/agentready/main/schema/agentready.schema.json",
   "baselinePath": ".agentready-baseline.json",
   "failOn": "medium",
   "ignorePaths": ["fixtures/**"],

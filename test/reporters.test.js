@@ -25,7 +25,7 @@ test("formatSarif emits valid SARIF with rule and location data", () => {
   );
 
   assert.equal(sarif.version, "2.1.0");
-  assert.equal(sarif.runs[0].tool.driver.informationUri, "https://github.com/wangjiehu/agentready");
+  assert.equal(sarif.runs[0].tool.driver.informationUri, "https://github.com/occ-tools/agentready");
   assert.ok(sarif.runs[0].tool.driver.rules.some((rule) => rule.id === "secret.github_token"));
   assert.equal(sarif.runs[0].originalUriBaseIds.PROJECTROOT.uri.startsWith("file:"), true);
   assert.equal(sarif.runs[0].results[0].level, "error");

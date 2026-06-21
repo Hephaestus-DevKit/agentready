@@ -26,7 +26,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
-      - uses: wangjiehu/agentready@v0.1.0
+      - uses: occ-tools/agentready@v0.1.0
         with:
           fail-on: medium
           format: sarif

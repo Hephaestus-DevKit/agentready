@@ -109,7 +109,7 @@ function runTarballSmoke() {
     writeFileSync(path.join(project, "package.json"), `${JSON.stringify({ private: true, type: "module" })}\n`, "utf8");
     run("npm", ["install", "--silent", "--no-audit", "--no-fund", path.join(tempRoot, tgzName)], { cwd: project });
 
-    const cli = path.join(project, "node_modules", "@Hephaestus-DevKit", "agentready", "bin", "agentready.js");
+    const cli = path.join(project, "node_modules", "@hepheastus-devkit", "agentready", "bin", "agentready.js");
     const version = run(process.execPath, [cli, "version"], { cwd: project }).trim();
     const scan = JSON.parse(run(process.execPath, [cli, "scan", project, "--format", "json", "--summary-only"], { cwd: project }));
     if (version !== PKG.version || scan.schemaVersion !== "1") {

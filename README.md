@@ -7,9 +7,9 @@ Preflight security checks before you give Claude Code, Codex, Cursor, MCP
 tooling, or another AI coding agent access to a software project.
 
 ```bash
-npx @Hephaestus-DevKit/agentready quickstart .
-npx @Hephaestus-DevKit/agentready scan .
-npx @Hephaestus-DevKit/agentready badge .
+npx @hepheastus-devkit/agentready quickstart .
+npx @hepheastus-devkit/agentready scan .
+npx @hepheastus-devkit/agentready badge .
 ```
 
 AgentReady runs locally. It does not upload your code, findings, baseline, or
@@ -78,17 +78,17 @@ Next steps:
 Start without installing:
 
 ```bash
-npx @Hephaestus-DevKit/agentready quickstart .
-npx @Hephaestus-DevKit/agentready scan .
-pnpm dlx @Hephaestus-DevKit/agentready scan .
-yarn dlx @Hephaestus-DevKit/agentready scan .
-bunx @Hephaestus-DevKit/agentready scan .
+npx @hepheastus-devkit/agentready quickstart .
+npx @hepheastus-devkit/agentready scan .
+pnpm dlx @hepheastus-devkit/agentready scan .
+yarn dlx @hepheastus-devkit/agentready scan .
+bunx @hepheastus-devkit/agentready scan .
 ```
 
 Install in a project:
 
 ```bash
-npm install -D @Hephaestus-DevKit/agentready
+npm install -D @hepheastus-devkit/agentready
 npx agentready scan .
 ```
 

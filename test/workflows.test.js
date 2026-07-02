@@ -42,7 +42,7 @@ test("ci workflow uses the supported Node matrix and current action versions", a
   assert.doesNotMatch(workflow, /actions\/setup-node@v4/);
   assert.match(workflow, /actions\/checkout@v7/);
   assert.match(workflow, /actions\/setup-node@v6/);
-  assert.match(workflow, /actions\/dependency-review-action@v4/);
+  assert.match(workflow, /actions\/dependency-review-action@v5/);
 });
 
 test("repository settings match CI matrix and trusted publisher fields", async () => {

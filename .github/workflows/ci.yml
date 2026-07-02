@@ -42,11 +42,11 @@ jobs:
       - run: npm pack --pack-destination "$RUNNER_TEMP"
       - run: |
           set -euo pipefail
-          package="$(ls "$RUNNER_TEMP"/agentready-*.tgz | head -n 1)"
+          package="$(ls "$RUNNER_TEMP"/Hephaestus-DevKit-agentready-*.tgz | head -n 1)"
           tmp="$(mktemp -d)"
           npm install --prefix "$tmp" "$package"
-          node "$tmp/node_modules/agentready/bin/agentready.js" version
-          node "$tmp/node_modules/agentready/bin/agentready.js" scan . --format json --summary-only
+          node "$tmp/node_modules/@Hephaestus-DevKit/agentready/bin/agentready.js" version
+          node "$tmp/node_modules/@Hephaestus-DevKit/agentready/bin/agentready.js" scan . --format json --summary-only
 
   action-smoke:
     runs-on: ubuntu-latest

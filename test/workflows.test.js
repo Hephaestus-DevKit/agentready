@@ -7,7 +7,7 @@ test("release workflow is configured for npm Trusted Publishing", async () => {
   const workflow = await readFile(path.join(".github", "workflows", "release.yml"), "utf8");
 
   assert.match(workflow, /id-token:\s*write/);
-  assert.match(workflow, /actions\/checkout@v6/);
+  assert.match(workflow, /actions\/checkout@v7/);
   assert.match(workflow, /actions\/setup-node@v6/);
   assert.match(workflow, /node-version:\s*24/);
   assert.match(workflow, /package-manager-cache:\s*false/);
@@ -40,7 +40,7 @@ test("ci workflow uses the supported Node matrix and current action versions", a
   assert.match(workflow, /node-version:\s*\[20,\s*22,\s*24\]/);
   assert.doesNotMatch(workflow, /actions\/checkout@v4/);
   assert.doesNotMatch(workflow, /actions\/setup-node@v4/);
-  assert.match(workflow, /actions\/checkout@v6/);
+  assert.match(workflow, /actions\/checkout@v7/);
   assert.match(workflow, /actions\/setup-node@v6/);
   assert.match(workflow, /actions\/dependency-review-action@v4/);
 });
@@ -63,7 +63,7 @@ test("repository settings match CI matrix and trusted publisher fields", async (
 test("scorecard workflow uploads SARIF with current action versions", async () => {
   const workflow = await readFile(path.join(".github", "workflows", "scorecard.yml"), "utf8");
 
-  assert.match(workflow, /actions\/checkout@v6/);
+  assert.match(workflow, /actions\/checkout@v7/);
   assert.match(workflow, /ossf\/scorecard-action@v2\.4\.3/);
   assert.match(workflow, /github\/codeql-action\/upload-sarif@v4/);
   assert.match(workflow, /security-events:\s*write/);
@@ -72,7 +72,7 @@ test("scorecard workflow uploads SARIF with current action versions", async () =
 test("init CI template uses current GitHub action versions", async () => {
   const source = await readFile(path.join("src", "init.js"), "utf8");
 
-  assert.match(source, /actions\/checkout@v6/);
+  assert.match(source, /actions\/checkout@v7/);
   assert.match(source, /actions\/setup-node@v6/);
   assert.match(source, /github\/codeql-action\/upload-sarif@v4/);
   assert.doesNotMatch(source, /if:\s*always\(\)/);

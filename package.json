@@ -1,5 +1,5 @@
 {
-  "name": "@occ-tools/agentready",
+  "name": "@Hephaestus-DevKit/agentready",
   "version": "1.0.1",
   "description": "Preflight security scanner for AI coding agent access to software projects.",
   "type": "module",
@@ -49,13 +49,13 @@
     "devtools",
     "preflight"
   ],
-  "homepage": "https://github.com/occ-tools/agentready#readme",
+  "homepage": "https://github.com/Hephaestus-DevKit/agentready#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/occ-tools/agentready.git"
+    "url": "git+https://github.com/Hephaestus-DevKit/agentready.git"
   },
   "bugs": {
-    "url": "https://github.com/occ-tools/agentready/issues"
+    "url": "https://github.com/Hephaestus-DevKit/agentready/issues"
   },
   "license": "MIT",
   "engines": {

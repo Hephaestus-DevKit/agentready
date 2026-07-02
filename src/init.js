@@ -139,7 +139,7 @@ function buildAgentignore(preset) {
 
 function buildConfig(preset) {
   const config = {
-    $schema: "https://raw.githubusercontent.com/occ-tools/agentready/main/schema/agentready.schema.json",
+    $schema: "https://raw.githubusercontent.com/Hephaestus-DevKit/agentready/main/schema/agentready.schema.json",
     baselinePath: null,
     failOn: preset === "legacy" ? "high" : "medium",
     ignorePaths: preset === "strict" ? ["fixtures/**", "examples/**"] : [],

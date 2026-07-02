@@ -7,9 +7,9 @@ Preflight security checks before you give Claude Code, Codex, Cursor, MCP
 tooling, or another AI coding agent access to a software project.
 
 ```bash
-npx @occ-tools/agentready quickstart .
-npx @occ-tools/agentready scan .
-npx @occ-tools/agentready badge .
+npx @Hephaestus-DevKit/agentready quickstart .
+npx @Hephaestus-DevKit/agentready scan .
+npx @Hephaestus-DevKit/agentready badge .
 ```
 
 AgentReady runs locally. It does not upload your code, findings, baseline, or
@@ -78,17 +78,17 @@ Next steps:
 Start without installing:
 
 ```bash
-npx @occ-tools/agentready quickstart .
-npx @occ-tools/agentready scan .
-pnpm dlx @occ-tools/agentready scan .
-yarn dlx @occ-tools/agentready scan .
-bunx @occ-tools/agentready scan .
+npx @Hephaestus-DevKit/agentready quickstart .
+npx @Hephaestus-DevKit/agentready scan .
+pnpm dlx @Hephaestus-DevKit/agentready scan .
+yarn dlx @Hephaestus-DevKit/agentready scan .
+bunx @Hephaestus-DevKit/agentready scan .
 ```
 
 Install in a project:
 
 ```bash
-npm install -D @occ-tools/agentready
+npm install -D @Hephaestus-DevKit/agentready
 npx agentready scan .
 ```
 
@@ -155,7 +155,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
-      - uses: occ-tools/agentready@v1
+      - uses: Hephaestus-DevKit/agentready@v1
         with:
           fail-on: medium
           format: sarif
@@ -235,7 +235,7 @@ from the scanned project root.
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/occ-tools/agentready/main/schema/agentready.schema.json",
+  "$schema": "https://raw.githubusercontent.com/Hephaestus-DevKit/agentready/main/schema/agentready.schema.json",
   "baselinePath": ".agentready-baseline.json",
   "failOn": "medium",
   "ignorePaths": ["fixtures/**"],

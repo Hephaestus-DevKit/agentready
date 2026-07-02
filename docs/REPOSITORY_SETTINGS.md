@@ -39,7 +39,7 @@ Configure the npm package trusted publisher to the GitHub repository and the
 `release.yml` workflow.
 
 - Publisher: GitHub Actions
-- Repository: `occ-tools/agentready`
+- Repository: `Hephaestus-DevKit/agentready`
 - Workflow: `release.yml`
 - Environment: `npm`
 

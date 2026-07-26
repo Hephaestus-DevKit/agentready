@@ -2,6 +2,10 @@
 
 ## 1.1.0
 
+### Changed
+
+- **Package renamed to `@hephaestus-devkit/agentready`** (correct Hephaestus spelling). Versions up to 1.0.2 were published under the misspelled scope `@hepheastus-devkit/agentready`; that package is deprecated in place. Update installs and `npx` commands to the new name.
+
 ### Fixed
 
 - Report evidence now redacts JWT tokens. Detection patterns and redaction share one table (`SECRET_TOKEN_RULES`), so a newly added token type can never be detected but leak unmasked into text, JSON, SARIF, or baseline output.
@@ -22,7 +26,7 @@
 - Known errors such as `init` write failures print their curated message without a stack trace.
 - Python: bare version ranges (`numpy>1.2`) count as constraints, and a Poetry `python` dependency satisfies the requires-python check.
 - package.json script findings resolve line numbers inside the `scripts` block, so a dependency sharing the script name no longer steals the location.
-- All `npx` commands in generated CI workflows (`init --with-ci`), `quickstart` output, and documentation now use the scoped package name `@hepheastus-devkit/agentready`. The unscoped `agentready` on the npm registry is an unrelated package, so the previous commands could fetch and run the wrong tool in CI.
+- All `npx` commands in generated CI workflows (`init --with-ci`), `quickstart` output, and documentation now use the scoped package name (`@hephaestus-devkit/agentready` after the rename above). The unscoped `agentready` on the npm registry is an unrelated package, so the previous commands could fetch and run the wrong tool in CI.
 - README npm badge and link now point at the scoped package instead of the unrelated unscoped one.
 - Composite action example references updated from the stale `@v0.1.0` tag; example workflows updated to `actions/checkout@v7`.
 - `package-lock.json` name field updated to the scoped package name.

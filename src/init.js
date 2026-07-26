@@ -88,7 +88,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 20
-      - run: npx @hepheastus-devkit/agentready scan . --ci --format sarif --output agentready.sarif
+      - run: npx @hephaestus-devkit/agentready scan . --ci --format sarif --output agentready.sarif
       - uses: github/codeql-action/upload-sarif@v4
         if: \${{ !cancelled() }}
         with:

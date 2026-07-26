@@ -16,7 +16,7 @@ Clear the npm cache or run with an explicit version once the package is
 published:
 
 ```bash
-npx @hepheastus-devkit/agentready@latest scan .
+npx @hephaestus-devkit/agentready@latest scan .
 ```
 
 ## PowerShell Quoting

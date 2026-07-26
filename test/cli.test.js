@@ -516,8 +516,8 @@ test("CLI quickstart prints a zero-write setup path", async () => {
 
   assert.match(result.stdout, /AgentReady Quickstart/);
   assert.match(result.stdout, /Configuration: missing/);
-  assert.match(result.stdout, /Preview setup: npx @hepheastus-devkit\/agentready init .+ --dry-run --with-ci/);
-  assert.doesNotMatch(result.stdout, /Preview setup: npx @hepheastus-devkit\/agentready init \. --dry-run --with-ci/);
+  assert.match(result.stdout, /Preview setup: npx @hephaestus-devkit\/agentready init .+ --dry-run --with-ci/);
+  assert.doesNotMatch(result.stdout, /Preview setup: npx @hephaestus-devkit\/agentready init \. --dry-run --with-ci/);
   // Bare "npx agentready" would resolve to an unrelated registry package.
   assert.doesNotMatch(result.stdout, /npx agentready /);
   assert.equal(existsSync(path.join(root, "AGENTS.md")), false);

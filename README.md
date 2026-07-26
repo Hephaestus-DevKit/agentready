@@ -1,6 +1,6 @@
 # AgentReady
 
-[![npm version](https://img.shields.io/npm/v/%40hepheastus-devkit%2Fagentready)](https://www.npmjs.com/package/@hepheastus-devkit/agentready)
+[![npm version](https://img.shields.io/npm/v/%40hephaestus-devkit%2Fagentready)](https://www.npmjs.com/package/@hephaestus-devkit/agentready)
 [![ci](https://github.com/Hephaestus-DevKit/agentready/actions/workflows/ci.yml/badge.svg)](https://github.com/Hephaestus-DevKit/agentready/actions/workflows/ci.yml)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/Hephaestus-DevKit/agentready/badge)](https://scorecard.dev/viewer/?uri=github.com/Hephaestus-DevKit/agentready)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -9,9 +9,9 @@ Preflight security checks before you give Claude Code, Codex, Cursor, MCP
 tooling, or another AI coding agent access to a software project.
 
 ```bash
-npx @hepheastus-devkit/agentready quickstart .
-npx @hepheastus-devkit/agentready scan .
-npx @hepheastus-devkit/agentready badge .
+npx @hephaestus-devkit/agentready quickstart .
+npx @hephaestus-devkit/agentready scan .
+npx @hephaestus-devkit/agentready badge .
 ```
 
 AgentReady runs locally. It does not upload your code, findings, baseline, or
@@ -83,18 +83,18 @@ Next steps:
 Requires Node.js 20 or newer. Start without installing:
 
 ```bash
-npx @hepheastus-devkit/agentready quickstart .
-npx @hepheastus-devkit/agentready scan .
-pnpm dlx @hepheastus-devkit/agentready scan .
-yarn dlx @hepheastus-devkit/agentready scan .
-bunx @hepheastus-devkit/agentready scan .
+npx @hephaestus-devkit/agentready quickstart .
+npx @hephaestus-devkit/agentready scan .
+pnpm dlx @hephaestus-devkit/agentready scan .
+yarn dlx @hephaestus-devkit/agentready scan .
+bunx @hephaestus-devkit/agentready scan .
 ```
 
 Install in a project:
 
 ```bash
-npm install -D @hepheastus-devkit/agentready
-npx @hepheastus-devkit/agentready scan .
+npm install -D @hephaestus-devkit/agentready
+npx @hephaestus-devkit/agentready scan .
 ```
 
 Use this repository directly during development:

@@ -1,4 +1,4 @@
-import { createLineFinder, redact } from "./utils.js";
+import { createLineFinder, looksLikePlaceholderValue, redact } from "./utils.js";
 
 export const MCP_CONFIG_NAMES = new Set([
   "claude_desktop_config.json",
@@ -247,7 +247,7 @@ function isInlineSecretString(value) {
     return false;
   }
 
-  if (/^(example|sample|changeme|change[-_]?me|replace[-_]?me|placeholder|dummy|test|todo|xxx+|your[-_]?|<)/i.test(trimmed)) {
+  if (looksLikePlaceholderValue(trimmed)) {
     return false;
   }
 

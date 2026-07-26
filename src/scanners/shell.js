@@ -58,6 +58,13 @@ export function scanDangerousCommandLines(relativePath, content, idPrefix) {
 export function classifyDangerousCommand(command) {
   const findings = [];
 
+  // A line that only prints text is not executing anything: install scripts
+  // commonly echo instructions like `echo "run: sudo systemctl ..."`. Only
+  // skip when no shell separator could chain a real command after the echo.
+  if (/^\s*(echo|printf)\b/i.test(command) && !/(\&\&|\|\||;|\||\$\(|`)/.test(command)) {
+    return findings;
+  }
+
   // Detect recursive delete: rm -rf, rm -fr, rm -r -f, rm --recursive --force
   // Covers combined flags (-rf, -fr), separated flags (-r -f), and long forms
   if (

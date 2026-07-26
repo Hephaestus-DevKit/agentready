@@ -32,6 +32,19 @@ Rule ids are used in configuration:
 
 Prefer fixing real issues. Use ignores for reviewed, intentional exceptions.
 
+## Severity Adjustments
+
+Secret findings in conventional test locations (`test/`, `tests/`,
+`__tests__/`, `__mocks__/`, `spec/`, `fixtures/`, `*.test.*`, `*.spec.*`,
+`*_test.*`, `conftest.py`) are reported at `low` severity instead of `high`.
+Test fixtures are usually deliberate fakes, but the finding stays visible so a
+real committed credential can still be caught. Use `--fail-on low` to treat
+them as blocking again.
+
+Values that start with obvious placeholder instructions (`change-this`,
+`replace-`, `your-`, `fill-in`, and similar) are not reported as secrets in
+sensitive files or MCP configurations.
+
 ## Market-Critical Coverage
 
 The current catalog includes rules for:

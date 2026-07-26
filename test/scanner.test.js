@@ -705,3 +705,80 @@ test("scanProject rejects non-existent scan target", async () => {
     /Scan target does not exist/
   );
 });
+
+test("scanProject treats change-this style values as placeholders", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  await writeFile(path.join(root, "AGENTS.md"), "# AGENTS.md\n", "utf8");
+  await writeFile(path.join(root, ".agentignore"), ".env\n", "utf8");
+  await writeFile(
+    path.join(root, ".env.example"),
+    "ADMIN_TOKEN=change-this-for-remote-admin\nAPI_TOKEN=replace-with-a-real-token\nFILL_TOKEN=fill-in-your-value\n",
+    "utf8"
+  );
+
+  const result = await scanProject(root);
+  const ids = result.findings.map((finding) => finding.id);
+
+  assert.equal(ids.includes("secret.generic_assignment"), false);
+});
+
+test("scanProject reports secrets in test files at low severity", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const srcDir = path.join(root, "src");
+  await mkdir(srcDir, { recursive: true });
+  await writeFile(path.join(root, "AGENTS.md"), "# AGENTS.md\n", "utf8");
+  await writeFile(path.join(root, ".agentignore"), ".env\n", "utf8");
+  const fakeKey = "sk-abcdefghijklmnopqrstuvwxyz1234567890";
+  await writeFile(path.join(srcDir, "redaction.test.ts"), `const key = "${fakeKey}";\n`, "utf8");
+  await writeFile(path.join(srcDir, "app.ts"), `const key = "${fakeKey}";\n`, "utf8");
+
+  const result = await scanProject(root);
+  const testFinding = result.findings.find((f) => f.file === "src/redaction.test.ts");
+  const sourceFinding = result.findings.find((f) => f.file === "src/app.ts");
+
+  assert.equal(testFinding?.id, "secret.openai_key");
+  assert.equal(testFinding?.severity, "low");
+  assert.match(testFinding?.why || "", /test file or fixture/);
+  assert.equal(sourceFinding?.severity, "high");
+});
+
+test("scanProject does not flag dangerous keywords inside pure echo lines", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  await writeFile(path.join(root, "AGENTS.md"), "# AGENTS.md\n", "utf8");
+  await writeFile(path.join(root, ".agentignore"), ".env\n", "utf8");
+  await writeFile(
+    path.join(root, "install.sh"),
+    'echo "Optional boot startup without login: sudo loginctl enable-linger $USER"\necho hi && sudo apt install thing\n',
+    "utf8"
+  );
+
+  const result = await scanProject(root);
+  const sudoFindings = result.findings.filter((f) => f.id === "script.dangerous_command.sudo");
+
+  assert.equal(sudoFindings.length, 1);
+  assert.equal(sudoFindings[0].line, 2);
+});
+
+test("scanProject allows placeholder values in MCP configuration", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  await writeFile(path.join(root, "AGENTS.md"), "# AGENTS.md\n", "utf8");
+  await writeFile(path.join(root, ".agentignore"), ".env\n", "utf8");
+  await writeFile(
+    path.join(root, "mcp.json"),
+    JSON.stringify({
+      mcpServers: {
+        api: {
+          command: "node",
+          args: ["server.js"],
+          env: { API_TOKEN: "change-this-to-your-token" }
+        }
+      }
+    }),
+    "utf8"
+  );
+
+  const result = await scanProject(root);
+  const ids = result.findings.map((finding) => finding.id);
+
+  assert.equal(ids.includes("mcp.inline_secret"), false);
+});

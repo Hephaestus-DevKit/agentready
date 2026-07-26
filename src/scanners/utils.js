@@ -32,3 +32,26 @@ export function splitLines(content) {
 // Re-export the canonical implementation from ../utils.js so there is a single
 // source of truth; existing scanner consumers keep importing it from here.
 export { escapeRegExp } from "../utils.js";
+
+/**
+ * Values that are clearly instructions rather than credentials. Shared by the
+ * secrets and MCP scanners so placeholder handling stays consistent.
+ * Dogfood evidence: ".env.example" files commonly use values like
+ * "change-this-for-remote-admin", which the earlier "changeme" pattern missed.
+ */
+const PLACEHOLDER_VALUE_PATTERN = /^(example|sample|changeme|change[-_]|replace[-_]|placeholder|dummy|test|todo|xxx+|your[-_]?|<|fill[-_]?in|insert[-_])/i;
+
+export function looksLikePlaceholderValue(value) {
+  return PLACEHOLDER_VALUE_PATTERN.test(String(value).trim());
+}
+
+/**
+ * Paths that are conventionally test code or test fixtures. Secret-shaped
+ * values found here are usually deliberate fakes (for example a redaction
+ * test suite), so findings are reported at reduced severity instead of high.
+ */
+const TEST_PATH_PATTERN = /(^|\/)(tests?|__tests__|__mocks__|spec|fixtures?)(\/|$)|\.(test|spec)\.[^/]+$|_test\.[^/]+$|(^|\/)conftest\.py$/i;
+
+export function isTestPath(relativePath) {
+  return TEST_PATH_PATTERN.test(String(relativePath).replaceAll("\\", "/"));
+}

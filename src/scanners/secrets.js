@@ -1,4 +1,7 @@
-import { redact, splitLines } from "./utils.js";
+import { isTestPath, looksLikePlaceholderValue, redact, splitLines } from "./utils.js";
+
+const TEST_CONTEXT_WHY =
+  "Secret-shaped value found in a test file or fixture; these are usually deliberate fakes, but verify no real credential was committed.";
 
 export const SENSITIVE_FILE_PATTERNS = [
   /^\.env(?:[.-]|rc$|$)/i,
@@ -94,6 +97,12 @@ export function scanSensitiveFileName(relativePath, basename) {
 export function scanSecretContent(relativePath, basename, content) {
   const findings = [];
   const lines = splitLines(content);
+  // Secret-shaped values in test code are usually deliberate fakes (for
+  // example fixtures for a redaction test suite). Keep reporting them so a
+  // real committed credential is still visible, but at low severity so they
+  // do not fail CI at the default medium threshold.
+  const inTestContext = isTestPath(relativePath);
+  const severity = inTestContext ? "low" : "high";
 
   for (const rule of SECRET_PATTERNS) {
     for (let index = 0; index < lines.length; index += 1) {
@@ -103,19 +112,20 @@ export function scanSecretContent(relativePath, basename, content) {
 
       findings.push({
         id: rule.id,
-        severity: "high",
+        severity,
         title: rule.title,
         file: relativePath,
         line: index + 1,
         evidence: redact(lines[index]),
-        recommendation: rule.recommendation
+        recommendation: rule.recommendation,
+        ...(inTestContext ? { why: TEST_CONTEXT_WHY } : {})
       });
       // Do NOT break — report ALL occurrences of each secret pattern in the file
     }
   }
 
   if (isSensitivePath(relativePath, basename)) {
-    findings.push(...scanGenericSecretAssignments(relativePath, lines));
+    findings.push(...scanGenericSecretAssignments(relativePath, lines, severity, inTestContext));
   }
 
   return findings;
@@ -134,7 +144,7 @@ function isTemplateSensitiveFileName(basename) {
   return /(?:^|[._-])(example|sample|template|dummy)(?:[._-]|$)/i.test(basename);
 }
 
-function scanGenericSecretAssignments(relativePath, lines) {
+function scanGenericSecretAssignments(relativePath, lines, severity = "high", inTestContext = false) {
   const findings = [];
 
   for (let index = 0; index < lines.length; index += 1) {
@@ -154,12 +164,13 @@ function scanGenericSecretAssignments(relativePath, lines) {
 
     findings.push({
       id: "secret.generic_assignment",
-      severity: "high",
+      severity,
       title: "Secret-like assignment is present",
       file: relativePath,
       line: index + 1,
       evidence: `${match[1]}=[redacted]`,
-      recommendation: "Move secret values out of repository files, rotate exposed credentials, and keep them outside agent-readable paths."
+      recommendation: "Move secret values out of repository files, rotate exposed credentials, and keep them outside agent-readable paths.",
+      ...(inTestContext ? { why: TEST_CONTEXT_WHY } : {})
     });
   }
 
@@ -189,8 +200,8 @@ function matchSecretAssignment(line) {
 
 function isPlaceholderSecret(value) {
   const str = String(value);
-  // Obvious placeholder prefixes
-  if (/^(example|sample|changeme|change[-_]?me|replace[-_]?me|placeholder|dummy|test|todo|xxx+|your[-_]?|<)/i.test(str)) {
+  // Obvious placeholder prefixes (shared with the MCP scanner)
+  if (looksLikePlaceholderValue(str)) {
     return true;
   }
   // Environment variable references like $VAR, ${VAR}, %VAR%

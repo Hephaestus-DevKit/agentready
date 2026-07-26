@@ -176,6 +176,37 @@ test("formatMarkdown can group findings by category and show report limits", () 
   assert.match(output, /1 finding\(s\) hidden/);
 });
 
+test("formatText colorizes severity and status only when color is enabled", () => {
+  const result = {
+    root: "/tmp/project",
+    scannedAt: "2026-06-02T00:00:00.000Z",
+    durationMs: 12,
+    filesScanned: 2,
+    config: { configPath: null, failOn: "medium" },
+    summary: { high: 1, medium: 0, low: 0, info: 0 },
+    findings: [
+      {
+        id: "secret.generic_assignment",
+        severity: "high",
+        title: "Secret-like assignment is present",
+        category: "secrets",
+        file: ".env",
+        evidence: "SERVICE_TOKEN=[redacted]",
+        recommendation: "Move secret values out of repository files."
+      }
+    ]
+  };
+
+  const plain = formatText(result);
+  const colored = formatText(result, { color: true });
+
+  assert.doesNotMatch(plain, /\x1b\[/);
+  assert.match(colored, /\x1b\[31mHIGH\x1b\[0m/);
+  assert.match(colored, /Status: \x1b\[31maction required\x1b\[0m/);
+  // Colored output must reduce to the plain output once codes are stripped.
+  assert.equal(colored.replaceAll(/\x1b\[[0-9]+m/g, ""), plain);
+});
+
 test("formatBaselineDiff emits reviewable text", () => {
   const output = formatBaselineDiff(
     {

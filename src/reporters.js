@@ -7,6 +7,30 @@ import { TOOL_VERSION } from "./version.js";
 
 const TOOL_INFORMATION_URI = "https://github.com/Hephaestus-DevKit/agentready";
 const RULE_HELP_URI = RULE_DOCS_URL;
+// ANSI palette for TTY text reports. Callers opt in via formatText's
+// `color` option; markdown/JSON/SARIF output is never colorized.
+const ANSI_COLORS = {
+  red: "\x1b[31m",
+  yellow: "\x1b[33m",
+  cyan: "\x1b[36m",
+  green: "\x1b[32m",
+  gray: "\x1b[90m"
+};
+const SEVERITY_COLORS = { high: "red", medium: "yellow", low: "cyan", info: "gray" };
+const STATUS_COLORS = {
+  "action required": "red",
+  "review recommended": "yellow",
+  "ready with notes": "cyan",
+  ready: "green"
+};
+
+function makePainter(enabled) {
+  if (!enabled) {
+    return (text) => text;
+  }
+  return (text, color) => (ANSI_COLORS[color] ? `${ANSI_COLORS[color]}${text}\x1b[0m` : text);
+}
+
 const SKIP_REASON_LABELS = {
   ignoredPath: "ignored-path",
   ignoredDirectory: "ignored-directory",
@@ -129,9 +153,12 @@ export function formatText(result, options = {}) {
     return `AgentReady: high=${result.summary.high} medium=${result.summary.medium} low=${result.summary.low} info=${result.summary.info}`;
   }
 
+  const paint = makePainter(Boolean(options.color));
   const lines = [
     "AgentReady Report",
-    ...summaryMetaRows(result).map(([label, value]) => `${label}: ${value}`),
+    ...summaryMetaRows(result).map(([label, value]) =>
+      `${label}: ${label === "Status" ? paint(value, STATUS_COLORS[value]) : value}`
+    ),
     `Summary: high=${result.summary.high} medium=${result.summary.medium} low=${result.summary.low} info=${result.summary.info}`,
     ""
   ];
@@ -152,14 +179,15 @@ export function formatText(result, options = {}) {
 
   lines.push("Top risks:");
   for (const finding of topRisks(result.findings)) {
-    lines.push(`- [${finding.severity.toUpperCase()}] ${formatLocation(finding)} ${finding.title}`);
+    lines.push(`- [${paint(finding.severity.toUpperCase(), SEVERITY_COLORS[finding.severity])}] ${formatLocation(finding)} ${finding.title}`);
   }
   lines.push("");
 
+  const findingOptions = { ...options, paint };
   if ((options.groupBy || result.report?.groupBy) === "category") {
-    appendTextFindingsByCategory(lines, result.findings, options);
+    appendTextFindingsByCategory(lines, result.findings, findingOptions);
   } else {
-    appendTextFindingsBySeverity(lines, result.findings, options);
+    appendTextFindingsBySeverity(lines, result.findings, findingOptions);
   }
 
   if (result.report?.omittedFindings > 0) {
@@ -322,13 +350,14 @@ function appendMarkdownFinding(lines, finding) {
 }
 
 function appendTextFindingsBySeverity(lines, findings, options) {
+  const paint = options.paint || ((text) => text);
   for (const severity of SEVERITIES) {
     const group = findings.filter((finding) => finding.severity === severity);
     if (group.length === 0) {
       continue;
     }
 
-    lines.push(`${severity.toUpperCase()} (${group.length})`);
+    lines.push(`${paint(severity.toUpperCase(), SEVERITY_COLORS[severity])} (${group.length})`);
     for (const finding of group) {
       appendTextFinding(lines, finding, options);
     }

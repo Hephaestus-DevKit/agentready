@@ -13,6 +13,9 @@
 
 ### Improved
 
+- `--no-color` is now a real option: text reports colorize severity and status labels on interactive terminals, with automatic disabling for piped output, `--output` files, and the `NO_COLOR` environment variable. Previously the flag was accepted but had no effect because no output was ever colorized.
+- A missing scan target now exits with a clean usage error (exit code 2) instead of an unexpected-error stack trace (exit code 4).
+- The published result schema (`schema/agentready-result.schema.json`) now documents `toolVersion`, `configWarnings`, the `report` block, and finding `fixUrl`.
 - Single source of truth for the tool version (`src/version.js`), shared by the `version` command, scanner results, and reporters.
 - Table-driven CLI option parser replaces ~200 lines of per-flag branches; behavior and error messages are unchanged.
 - Consolidated duplicate `escapeRegExp` implementations and unified line splitting (`splitLines`) across scanners so lone `\r` line endings are handled consistently.

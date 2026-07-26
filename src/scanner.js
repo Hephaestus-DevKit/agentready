@@ -5,6 +5,7 @@ import { DEFAULT_IGNORED_DIRS, MAX_FILE_BYTES, TEXT_EXTENSIONS, TEXT_FILE_NAMES 
 import { DEFAULT_CONFIG, applyFindingConfig, matchesAnyPath } from "./config.js";
 import { applyBaseline } from "./baseline.js";
 import { addFingerprints } from "./fingerprint.js";
+import { usageError } from "./errors.js";
 import { toRelative, summarizeSeverities } from "./utils.js";
 import { enrichFindings } from "./rules.js";
 import { TOOL_VERSION } from "./version.js";
@@ -18,7 +19,9 @@ import { scanPythonProjectFiles } from "./scanners/python.js";
 export async function scanProject(root, options = {}) {
   const startedAt = Date.now();
   if (!existsSync(root)) {
-    throw new Error(`Scan target does not exist: ${root}`);
+    // Usage error (exit 2): a missing target is caller input, not a crash,
+    // so the CLI should print a clean message instead of a stack trace.
+    throw usageError(`Scan target does not exist: ${root}`);
   }
   const config = options.config || DEFAULT_CONFIG;
   const collected = await collectFiles(root, config);

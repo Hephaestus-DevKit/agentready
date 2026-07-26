@@ -315,6 +315,21 @@ test("CLI baseline command creates missing output directories", async () => {
   assert.equal(existsSync(baselinePath), true);
 });
 
+test("CLI reports missing scan target as a clean usage error", async () => {
+  await assert.rejects(
+    execFileAsync(process.execPath, [CLI_PATH, "scan", path.join(os.tmpdir(), `agentready-missing-${Date.now()}`)], {
+      cwd: process.cwd()
+    }),
+    (error) => {
+      assert.equal(error.code, 2);
+      assert.match(error.stderr, /Scan target does not exist/);
+      // Usage errors must not dump a stack trace.
+      assert.doesNotMatch(error.stderr, /at scanProject/);
+      return true;
+    }
+  );
+});
+
 test("CLI version prints package version", async () => {
   const pkg = JSON.parse(await readFile(path.resolve("package.json"), "utf8"));
   const result = await execFileAsync(process.execPath, [CLI_PATH, "version"], {

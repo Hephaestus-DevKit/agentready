@@ -60,6 +60,11 @@ in the report. CI failure decisions still use the complete scan result.
 `--max-file-size` changes the maximum input file size AgentReady reads during
 the scan. The default is `524288` bytes.
 
+Text reports colorize severity and status labels when printed to an
+interactive terminal. Colors are disabled automatically for piped output,
+`--output` files, and the `NO_COLOR` environment variable, or explicitly with
+`--no-color`.
+
 ## Baseline Options
 
 ```bash

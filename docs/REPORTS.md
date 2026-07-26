@@ -45,7 +45,8 @@ agentready scan . --format json
 ```
 
 JSON is intended for scripts and AI agents. It includes `schemaVersion` so
-automation can guard against future structural changes, and `nextSteps` so
+automation can guard against future structural changes, `toolVersion` so
+results can be traced to the producing package release, and `nextSteps` so
 callers do not need to parse the human-readable report.
 
 The scan-result schema is published at

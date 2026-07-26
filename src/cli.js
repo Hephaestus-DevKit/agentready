@@ -175,7 +175,12 @@ async function handleScan(args) {
         ? formatMarkdown(reportResult, reportOptions)
         : format === "sarif"
           ? formatSarif(reportResult)
-          : formatText(reportResult, { quiet: options.quiet, verbose: options.verbose, groupBy: reportOptions.groupBy });
+          : formatText(reportResult, {
+              quiet: options.quiet,
+              verbose: options.verbose,
+              groupBy: reportOptions.groupBy,
+              color: shouldColorize(options) && !options.output
+            });
 
   if (options.output) {
     const outputPath = path.resolve(options.output);
@@ -356,7 +361,18 @@ async function handleDoctor(args) {
     baseline,
     configWarnings: loaded.warnings
   });
-  console.log(formatText(applyReportOptions(result, reportOptions), { quiet: options.quiet, verbose: options.verbose, groupBy: reportOptions.groupBy }));
+  console.log(formatText(applyReportOptions(result, reportOptions), {
+    quiet: options.quiet,
+    verbose: options.verbose,
+    groupBy: reportOptions.groupBy,
+    color: shouldColorize(options)
+  }));
+}
+
+// Colors are opt-out (--no-color), respect the NO_COLOR convention
+// (https://no-color.org), and only apply to interactive terminal output.
+function shouldColorize(options) {
+  return !options.noColor && !process.env.NO_COLOR && process.stdout.isTTY === true;
 }
 
 async function handleQuickstart(args) {

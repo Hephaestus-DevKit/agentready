@@ -3,11 +3,15 @@
   "title": "AgentReady scan result",
   "type": "object",
   "additionalProperties": true,
-  "required": ["schemaVersion", "root", "scannedAt", "durationMs", "filesScanned", "config", "findings", "summary"],
+  "required": ["schemaVersion", "toolVersion", "root", "scannedAt", "durationMs", "filesScanned", "config", "findings", "summary"],
   "properties": {
     "schemaVersion": {
       "type": "string",
       "const": "1"
+    },
+    "toolVersion": {
+      "type": "string",
+      "description": "Version of the AgentReady package that produced this result."
     },
     "root": {
       "type": "string"
@@ -66,6 +70,12 @@
         }
       }
     },
+    "configWarnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
     "baseline": {
       "type": "object",
       "properties": {
@@ -79,6 +89,35 @@
         "suppressed": {
           "type": "integer",
           "minimum": 0
+        }
+      }
+    },
+    "report": {
+      "type": "object",
+      "description": "Present when report limits or grouping were applied via CLI options.",
+      "properties": {
+        "totalFindings": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "displayedFindings": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "omittedFindings": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "summaryOnly": {
+          "type": "boolean"
+        },
+        "maxFindings": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "groupBy": {
+          "type": "string",
+          "enum": ["severity", "category"]
         }
       }
     },
@@ -152,6 +191,9 @@
           "type": "string"
         },
         "why": {
+          "type": "string"
+        },
+        "fixUrl": {
           "type": "string"
         },
         "fingerprint": {

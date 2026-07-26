@@ -31,12 +31,13 @@
 
 ### Improved
 
+- Repository workflows and the composite action pin every external GitHub Action to a full commit SHA with a version comment, enforced by a test; `actions/setup-node` bumped to v7. Documentation examples keep readable version tags.
 - Composite action: an empty `fail-on` input now defers to the project configuration's `failOn` instead of always overriding it with `medium`.
 - Each scanned file is read once (previously up to three filesystem operations per file); binary sensitive files such as `.p12` stores still get the filename finding without being content-scanned as garbage.
 - `.agentignore` is recognized as a scannable text file type.
 - CLI internals: output writing, format validation, and unsupported-option rejection are table-driven, so new options cannot be silently forgotten.
 - Documentation: the CLI reference now covers `badge` and doctor `--no-color`; example reports are regenerated from the shipped demo fixtures; composite action usage examples pin an immutable version tag per the repository tag policy.
-- Test suite: shared helpers, zero temp-directory leakage, runner-cwd independence, and about 40 new regression tests covering redaction, the badge command, config/baseline error exits, and every scanner fix in this release (212 tests total).
+- Test suite: shared helpers, zero temp-directory leakage, runner-cwd independence, and about 40 new regression tests covering redaction, the badge command, config/baseline error exits, and every scanner fix in this release (217 tests total).
 - Noise reduction driven by scanning real repositories (ten local projects across TypeScript, Next.js, Python, and CI-heavy codebases; all remaining findings verified as true positives):
   - Secret findings in conventional test locations (`test/`, `__tests__/`, `fixtures/`, `*.test.*`, `*.spec.*`, `conftest.py`, and similar) are reported at `low` severity instead of `high` — test fixtures are usually deliberate fakes, and nine fake keys in one scanned project previously produced nine blocking highs. The findings stay visible; `--fail-on low` restores blocking behavior.
   - Placeholder detection now recognizes `change-this...`, `replace-...`, `fill-in...`, and `insert-...` values (previously only `changeme`/`replace-me`), fixing false highs on committed `.env.example` templates. Real-looking values in template files are still reported.

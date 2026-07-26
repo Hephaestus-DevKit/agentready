@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { formatBaselineDiff, formatJson, formatMarkdown, formatSarif, formatText } from "../src/reporters.js";
+import { formatBaselineDebt, formatBaselineDiff, formatJson, formatMarkdown, formatSarif, formatText } from "../src/reporters.js";
 
 test("formatSarif emits valid SARIF with rule and location data", () => {
   const sarif = JSON.parse(
@@ -248,4 +248,101 @@ test("formatBaselineDiff emits reviewable text", () => {
   assert.match(output, /New: 1/);
   assert.match(output, /Stale: 1/);
   assert.match(output, /New severity: high=1 medium=0 low=0 info=0/);
+});
+
+const SAMPLE_DEBT = {
+  baselinePath: "/tmp/project/.agentready-baseline.json",
+  generatedAt: "2026-06-01T00:00:00.000Z",
+  entries: 2,
+  severity: { high: 0, medium: 1, low: 1, info: 0 },
+  oldestAgeDays: 30,
+  averageAgeDays: 20,
+  byRule: [
+    { key: "package.lifecycle_script", count: 1 },
+    { key: "python.unpinned_requirement", count: 1 }
+  ],
+  byFile: [{ key: "package.json", count: 1 }, { key: "requirements.txt", count: 1 }],
+  findings: [
+    {
+      id: "package.lifecycle_script",
+      severity: "medium",
+      title: "Package lifecycle script detected",
+      file: "package.json",
+      line: 3,
+      ageDays: 30
+    },
+    {
+      id: "python.unpinned_requirement",
+      severity: "low",
+      title: "Unpinned Python dependency",
+      file: "requirements.txt",
+      line: 1,
+      ageDays: 10
+    }
+  ]
+};
+
+test("formatBaselineDebt renders text with rules, files, and ages", () => {
+  const output = formatBaselineDebt(SAMPLE_DEBT, "text");
+
+  assert.match(output, /AgentReady Baseline Debt/);
+  assert.match(output, /Entries: 2/);
+  assert.match(output, /Severity: high=0 medium=1 low=1 info=0/);
+  assert.match(output, /Oldest age: 30d/);
+  assert.match(output, /Rules:\n\n- package\.lifecycle_script: 1/);
+  assert.match(output, /\[MEDIUM\] package\.json:3 Package lifecycle script detected \(package\.lifecycle_script, age 30d\)/);
+});
+
+test("formatBaselineDebt renders markdown with escaped keys", () => {
+  const output = formatBaselineDebt(SAMPLE_DEBT, "markdown");
+
+  assert.match(output, /# AgentReady Baseline Debt/);
+  assert.match(output, /- Baseline file: `\/tmp\/project\/\.agentready-baseline\.json`/);
+  assert.match(output, /## Rules\n\n- `package\.lifecycle_script`: 1/);
+  assert.match(output, /\*\*MEDIUM\*\* `package\.json:3` Package lifecycle script detected \(`package\.lifecycle_script`, age 30d\)/);
+});
+
+test("formatBaselineDebt reports empty sections as none", () => {
+  const output = formatBaselineDebt({
+    baselinePath: "/tmp/x.json",
+    entries: 0,
+    severity: { high: 0, medium: 0, low: 0, info: 0 },
+    oldestAgeDays: null,
+    averageAgeDays: null,
+    byRule: [],
+    byFile: [],
+    findings: []
+  }, "text");
+
+  assert.match(output, /Oldest age: unknown/);
+  assert.match(output, /Rules:\n\n- none/);
+  assert.match(output, /Findings:\n\n- none/);
+});
+
+test("formatText groups by category and prints fingerprints in verbose mode", () => {
+  const output = formatText({
+    root: "/tmp/project",
+    scannedAt: "2026-06-02T00:00:00.000Z",
+    durationMs: 5,
+    filesScanned: 1,
+    filesSkipped: {},
+    config: { configPath: null, failOn: "medium" },
+    summary: { high: 0, medium: 1, low: 0, info: 0 },
+    findings: [
+      {
+        id: "package.lifecycle_script",
+        severity: "medium",
+        title: "Package lifecycle script detected",
+        category: "package",
+        file: "package.json",
+        line: 3,
+        evidence: "postinstall: node setup.js",
+        recommendation: "Review lifecycle scripts.",
+        fingerprint: "abc123"
+      }
+    ]
+  }, { groupBy: "category", verbose: true });
+
+  assert.match(output, /package \(1\)/);
+  assert.match(output, /Fingerprint: abc123/);
 });

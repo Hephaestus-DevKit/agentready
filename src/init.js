@@ -85,7 +85,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
       - run: npx @hepheastus-devkit/agentready scan . --ci --format sarif --output agentready.sarif

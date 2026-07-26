@@ -1,6 +1,8 @@
 # AgentReady
 
 [![npm version](https://img.shields.io/npm/v/%40hepheastus-devkit%2Fagentready)](https://www.npmjs.com/package/@hepheastus-devkit/agentready)
+[![ci](https://github.com/Hephaestus-DevKit/agentready/actions/workflows/ci.yml/badge.svg)](https://github.com/Hephaestus-DevKit/agentready/actions/workflows/ci.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/Hephaestus-DevKit/agentready/badge)](https://scorecard.dev/viewer/?uri=github.com/Hephaestus-DevKit/agentready)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 Preflight security checks before you give Claude Code, Codex, Cursor, MCP
@@ -78,7 +80,7 @@ Next steps:
 
 ## Install
 
-Start without installing:
+Requires Node.js 20 or newer. Start without installing:
 
 ```bash
 npx @hepheastus-devkit/agentready quickstart .

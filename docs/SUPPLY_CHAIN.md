@@ -36,6 +36,14 @@ The main CI workflow runs on Linux, macOS, and Windows across supported Node.js
 versions. It also installs the packed tarball into a temporary project and runs
 the packaged CLI, which catches packaging mistakes that unit tests can miss.
 
+## Action Pinning
+
+Repository workflows and the composite action pin every external GitHub Action
+to a full commit SHA with a version comment (`owner/repo@<sha> # vX.Y.Z`), the
+same posture the `github_actions.unpinned_action` rule recommends and OpenSSF
+Scorecard rewards. A test (`test/workflows.test.js`) enforces the invariant.
+Documentation examples use version tags for readability.
+
 ## Dependency Review
 
 Pull requests run GitHub Dependency Review so dependency changes are visible
@@ -53,7 +61,7 @@ Reference: [OpenSSF Scorecard](https://openssf.org/scorecard/)
 
 ## Tagging
 
-Use immutable release tags such as `v1.0.2`. Do not move published tags. If a
+Use immutable release tags such as `v1.1.0`. Do not move published tags. If a
 release is bad, publish a new patch version instead of rewriting history.
 
 ## Baseline

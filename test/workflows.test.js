@@ -3,12 +3,41 @@ import { repoPath } from "./helpers.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
+// Repository workflows and the composite action pin external actions to full
+// commit SHAs with a version comment, e.g. `owner/repo@<40-hex> # v7.0.1`.
+const pinned = (action, versionPattern) =>
+  new RegExp(`${action.replace(/[/.-]/g, "\\$&")}@[a-f0-9]{40} # ${versionPattern}`);
+
+test("every external action reference in workflows and action.yml is SHA-pinned", async () => {
+  const files = [
+    repoPath(".github", "workflows", "ci.yml"),
+    repoPath(".github", "workflows", "release.yml"),
+    repoPath(".github", "workflows", "scorecard.yml"),
+    repoPath("action.yml")
+  ];
+
+  for (const file of files) {
+    const content = await readFile(file, "utf8");
+    for (const match of content.matchAll(/^\s*(?:-\s*)?uses:\s*(.+)$/gm)) {
+      const reference = match[1].trim();
+      if (reference.startsWith("./")) {
+        continue; // local composite action
+      }
+      assert.match(
+        reference,
+        /^[^@]+@[a-f0-9]{40} # v\d/,
+        `${file}: "${reference}" must be pinned to a full commit SHA with a version comment`
+      );
+    }
+  }
+});
+
 test("release workflow is configured for npm Trusted Publishing", async () => {
   const workflow = await readFile(repoPath(".github", "workflows", "release.yml"), "utf8");
 
   assert.match(workflow, /id-token:\s*write/);
-  assert.match(workflow, /actions\/checkout@v7/);
-  assert.match(workflow, /actions\/setup-node@v6/);
+  assert.match(workflow, pinned("actions/checkout", "v7"));
+  assert.match(workflow, pinned("actions/setup-node", "v7"));
   assert.match(workflow, /node-version:\s*24/);
   assert.match(workflow, /package-manager-cache:\s*false/);
   assert.match(workflow, /Verify release tag matches package version/);
@@ -31,18 +60,16 @@ test("composite action exposes scan-size and SARIF controls", async () => {
   assert.match(action, /upload-sarif requires format=sarif and output to be set/);
   assert.match(action, /inputs\.upload-sarif == 'true'\s*\|\|\s*inputs\.upload-sarif == '1'/);
   assert.match(action, /!cancelled\(\)\s*&&\s*\(inputs\.upload-sarif/);
-  assert.match(action, /github\/codeql-action\/upload-sarif@v4/);
+  assert.match(action, pinned("github/codeql-action/upload-sarif", "v4"));
 });
 
 test("ci workflow uses the supported Node matrix and current action versions", async () => {
   const workflow = await readFile(repoPath(".github", "workflows", "ci.yml"), "utf8");
 
   assert.match(workflow, /node-version:\s*\[20,\s*22,\s*24\]/);
-  assert.doesNotMatch(workflow, /actions\/checkout@v4/);
-  assert.doesNotMatch(workflow, /actions\/setup-node@v4/);
-  assert.match(workflow, /actions\/checkout@v7/);
-  assert.match(workflow, /actions\/setup-node@v6/);
-  assert.match(workflow, /actions\/dependency-review-action@v5/);
+  assert.match(workflow, pinned("actions/checkout", "v7"));
+  assert.match(workflow, pinned("actions/setup-node", "v7"));
+  assert.match(workflow, pinned("actions/dependency-review-action", "v5"));
 });
 
 test("repository settings match CI matrix and trusted publisher fields", async () => {
@@ -63,9 +90,9 @@ test("repository settings match CI matrix and trusted publisher fields", async (
 test("scorecard workflow uploads SARIF with current action versions", async () => {
   const workflow = await readFile(repoPath(".github", "workflows", "scorecard.yml"), "utf8");
 
-  assert.match(workflow, /actions\/checkout@v7/);
-  assert.match(workflow, /ossf\/scorecard-action@v2\.4\.3/);
-  assert.match(workflow, /github\/codeql-action\/upload-sarif@v4/);
+  assert.match(workflow, pinned("actions/checkout", "v7"));
+  assert.match(workflow, pinned("ossf/scorecard-action", "v2\\.4\\.3"));
+  assert.match(workflow, pinned("github/codeql-action/upload-sarif", "v4"));
   assert.match(workflow, /security-events:\s*write/);
 });
 
@@ -73,7 +100,7 @@ test("init CI template uses current GitHub action versions", async () => {
   const source = await readFile(repoPath("src", "init.js"), "utf8");
 
   assert.match(source, /actions\/checkout@v7/);
-  assert.match(source, /actions\/setup-node@v6/);
+  assert.match(source, /actions\/setup-node@v7/);
   assert.match(source, /github\/codeql-action\/upload-sarif@v4/);
   assert.doesNotMatch(source, /if:\s*always\(\)/);
   assert.match(source, /if:\s*\\\$\{\{\s*!cancelled\(\)\s*\}\}/);

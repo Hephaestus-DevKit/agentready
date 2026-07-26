@@ -479,7 +479,7 @@ test("scanProject does not report pinned or local GitHub Actions references as f
       "    runs-on: ubuntu-latest",
       "    steps:",
       "      - uses: actions/checkout@0123456789abcdef0123456789abcdef01234567",
-      "      - uses: actions/setup-node@v6",
+      "      - uses: actions/setup-node@v7",
       "      - uses: ./.github/actions/local"
     ].join("\n"),
     "utf8"

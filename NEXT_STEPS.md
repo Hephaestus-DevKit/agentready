@@ -30,7 +30,7 @@ npm run market:check
 - 创建 GitHub Release tag，格式必须等于 `v` 加 package version，例如 `v0.1.0`。
 - 通过 GitHub `release` workflow 发布，不从本地工作站发布。
 - 发布后确认 npm provenance 可见。
-- 发布后运行 `npx agentready version`，确认 npm 包可以正常安装和执行。
+- 发布后运行 `npx @hepheastus-devkit/agentready version`，确认 npm 包可以正常安装和执行。
 - 制造一次可控的 CI finding，确认 AgentReady SARIF 能出现在 GitHub code scanning。
 
 ## 真实仓库验证

@@ -3,8 +3,8 @@
 ## Run Your First Scan
 
 ```bash
-npx agentready quickstart .
-npx agentready scan .
+npx @hepheastus-devkit/agentready quickstart .
+npx @hepheastus-devkit/agentready scan .
 ```
 
 `quickstart` does not write files. It detects the project package runner,

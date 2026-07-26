@@ -254,6 +254,10 @@ function normalizeSeverityOverrides(value, warnings) {
   return overrides;
 }
 
+// matchPath runs for every walked file against every ignore pattern, so cache
+// compiled glob regexes per normalized pattern instead of recompiling each call.
+const globRegExpCache = new Map();
+
 function matchPath(pattern, relativePath) {
   const normalizedPattern = normalizePath(pattern);
   const normalizedPath = normalizePath(relativePath);
@@ -266,7 +270,12 @@ function matchPath(pattern, relativePath) {
     return normalizedPath === normalizedPattern || normalizedPath.startsWith(`${normalizedPattern}/`);
   }
 
-  return globToRegExp(normalizedPattern).test(normalizedPath);
+  let compiled = globRegExpCache.get(normalizedPattern);
+  if (!compiled) {
+    compiled = globToRegExp(normalizedPattern);
+    globRegExpCache.set(normalizedPattern, compiled);
+  }
+  return compiled.test(normalizedPath);
 }
 
 function normalizePath(value) {

@@ -4,6 +4,10 @@
 
 ### Fixed
 
+- All `npx` commands in generated CI workflows (`init --with-ci`), `quickstart` output, and documentation now use the scoped package name `@hepheastus-devkit/agentready`. The unscoped `agentready` on the npm registry is an unrelated package, so the previous commands could fetch and run the wrong tool in CI.
+- README npm badge and link now point at the scoped package instead of the unrelated unscoped one.
+- `docs/CI.md` composite action example now references `Hephaestus-DevKit/agentready@v1` instead of the stale `@v0.1.0` tag; example workflows updated to `actions/checkout@v7`.
+- `package-lock.json` name field updated to the scoped package name.
 - JSON and SARIF reports now carry the real package version (`toolVersion` field, SARIF `tool.driver.version`) instead of a hardcoded `0.1.0`.
 - Rule `fixUrl` links now point at the repository rule documentation (`docs/RULES.md`) instead of an unregistered domain, matching the SARIF `helpUri`.
 

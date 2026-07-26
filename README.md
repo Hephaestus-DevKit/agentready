@@ -1,6 +1,6 @@
 # AgentReady
 
-[![npm version](https://img.shields.io/npm/v/agentready)](https://www.npmjs.com/package/agentready)
+[![npm version](https://img.shields.io/npm/v/%40hepheastus-devkit%2Fagentready)](https://www.npmjs.com/package/@hepheastus-devkit/agentready)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 Preflight security checks before you give Claude Code, Codex, Cursor, MCP
@@ -89,7 +89,7 @@ Install in a project:
 
 ```bash
 npm install -D @hepheastus-devkit/agentready
-npx agentready scan .
+npx @hepheastus-devkit/agentready scan .
 ```
 
 Use this repository directly during development:
@@ -152,7 +152,7 @@ jobs:
   scan:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - uses: Hephaestus-DevKit/agentready@v1

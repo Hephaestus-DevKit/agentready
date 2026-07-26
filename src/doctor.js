@@ -43,7 +43,9 @@ export async function runDoctor(root, options = {}) {
     recommendation: "Write access is required for agentready init and report output."
   });
 
-  const findings = addFingerprints(enrichFindings([...checks, ...result.findings]));
+  // Scan findings are already enriched and fingerprinted by scanProject;
+  // only the doctor's own checks need processing before merging.
+  const findings = [...addFingerprints(enrichFindings(checks)), ...result.findings];
 
   return {
     schemaVersion: "1",

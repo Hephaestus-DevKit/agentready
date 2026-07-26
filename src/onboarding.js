@@ -3,6 +3,7 @@ import { readdir } from "node:fs/promises";
 import path from "node:path";
 import { formatCommandPath } from "./command-path.js";
 import { CONFIG_FILE_NAMES } from "./config.js";
+import { PACKAGE_NAME } from "./version.js";
 
 export async function runQuickstart(root) {
   const packageManager = detectPackageManager(root);
@@ -27,22 +28,27 @@ export async function runQuickstart(root) {
     "Recommended commands:"
   ];
 
+  // Always spell out the scoped package name: the unscoped "agentready" on the
+  // npm registry is a different, unrelated package, so a bare
+  // "npx agentready ..." without a local install would fetch the wrong tool.
+  const cli = `${runner} ${PACKAGE_NAME}`;
+
   if (needsSetup) {
     const ciFlag = needsCi ? " --with-ci" : "";
-    lines.push(`- Preview setup: ${runner} agentready init ${targetArg} --dry-run${ciFlag}`);
-    lines.push(`- Create setup files: ${runner} agentready init ${targetArg}${ciFlag}`);
+    lines.push(`- Preview setup: ${cli} init ${targetArg} --dry-run${ciFlag}`);
+    lines.push(`- Create setup files: ${cli} init ${targetArg}${ciFlag}`);
   } else {
-    lines.push(`- Validate config: ${runner} agentready config validate ${targetArg}`);
+    lines.push(`- Validate config: ${cli} config validate ${targetArg}`);
     if (needsCi) {
-      lines.push(`- Add CI later: ${runner} agentready init ${targetArg} --with-ci`);
+      lines.push(`- Add CI later: ${cli} init ${targetArg} --with-ci`);
     }
   }
 
-  lines.push(`- Run a scan: ${runner} agentready scan ${targetArg}`);
-  lines.push(`- Save a review report: ${runner} agentready scan ${targetArg} --format markdown --output agentready-report.md`);
-  lines.push(`- If adopting existing findings: ${runner} agentready baseline ${targetArg}`);
+  lines.push(`- Run a scan: ${cli} scan ${targetArg}`);
+  lines.push(`- Save a review report: ${cli} scan ${targetArg} --format markdown --output agentready-report.md`);
+  lines.push(`- If adopting existing findings: ${cli} baseline ${targetArg}`);
   lines.push("");
-  lines.push(`Optional local install: ${packageManager.install} agentready`);
+  lines.push(`Optional local install: ${packageManager.install} ${PACKAGE_NAME}`);
 
   return { messages: lines };
 }

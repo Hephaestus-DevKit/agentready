@@ -23,10 +23,10 @@ jobs:
   scan:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: Hephaestus-DevKit/agentready@v0.1.0
+      - uses: Hephaestus-DevKit/agentready@v1
         with:
           fail-on: medium
           format: sarif
@@ -58,13 +58,13 @@ jobs:
       contents: read
       security-events: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - uses: actions/setup-node@v6
         with:
           node-version: 20
-      - run: npx agentready scan . --ci --format sarif --output agentready.sarif
+      - run: npx @hepheastus-devkit/agentready scan . --ci --format sarif --output agentready.sarif
       - uses: github/codeql-action/upload-sarif@v4
         if: ${{ !cancelled() }}
         with:

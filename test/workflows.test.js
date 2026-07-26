@@ -79,6 +79,18 @@ test("init CI template uses current GitHub action versions", async () => {
   assert.match(source, /if:\s*\\\$\{\{\s*!cancelled\(\)\s*\}\}/);
 });
 
+test("init CI template runs the published scoped package via npx", async () => {
+  const source = await readFile(path.join("src", "init.js"), "utf8");
+  const manifest = JSON.parse(await readFile("package.json", "utf8"));
+
+  // The generated workflow has no install step, so npx fetches from the
+  // registry: the package spec must match the real published name. A bare
+  // "npx agentready" would run an unrelated package that squats the
+  // unscoped name.
+  assert.match(source, new RegExp(`npx ${manifest.name.replace(/[/\\]/g, "\\$&")} scan`));
+  assert.doesNotMatch(source, /npx agentready /);
+});
+
 test("package exposes the market readiness gate", async () => {
   const manifest = JSON.parse(await readFile("package.json", "utf8"));
 

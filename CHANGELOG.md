@@ -13,11 +13,13 @@
 
 ### Improved
 
-- Noise reduction driven by scanning real repositories:
+- Noise reduction driven by scanning real repositories (ten local projects across TypeScript, Next.js, Python, and CI-heavy codebases; all remaining findings verified as true positives):
   - Secret findings in conventional test locations (`test/`, `__tests__/`, `fixtures/`, `*.test.*`, `*.spec.*`, `conftest.py`, and similar) are reported at `low` severity instead of `high` — test fixtures are usually deliberate fakes, and nine fake keys in one scanned project previously produced nine blocking highs. The findings stay visible; `--fail-on low` restores blocking behavior.
   - Placeholder detection now recognizes `change-this...`, `replace-...`, `fill-in...`, and `insert-...` values (previously only `changeme`/`replace-me`), fixing false highs on committed `.env.example` templates. Real-looking values in template files are still reported.
   - Dangerous-command detection skips pure `echo`/`printf` lines with no command separator, so install scripts that print instructions like `echo "run: sudo systemctl ..."` are no longer flagged as executing `sudo`.
   - The placeholder heuristics are now shared between the secrets and MCP scanners (`looksLikePlaceholderValue`), so both treat the same values consistently.
+  - `rm -rf` targeting a scoped temp subdirectory (`/tmp/<name>`, `/var/tmp/<name>`) is no longer flagged as a high recursive delete — routine CI cleanup evidence: `rm -rf /tmp/bidpilot-pages`. Deleting `/tmp` itself or `/` still reports.
+  - Sensitive-looking filenames under test or fixture paths report at `low` severity, matching the treatment of secret values in test files.
 - `--no-color` is now a real option: text reports colorize severity and status labels on interactive terminals, with automatic disabling for piped output, `--output` files, and the `NO_COLOR` environment variable. Previously the flag was accepted but had no effect because no output was ever colorized.
 - A missing scan target now exits with a clean usage error (exit code 2) instead of an unexpected-error stack trace (exit code 4).
 - The published result schema (`schema/agentready-result.schema.json`) now documents `toolVersion`, `configWarnings`, the `report` block, and finding `fixUrl`.

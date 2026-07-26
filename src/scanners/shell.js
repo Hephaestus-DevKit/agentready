@@ -66,11 +66,14 @@ export function classifyDangerousCommand(command) {
   }
 
   // Detect recursive delete: rm -rf, rm -fr, rm -r -f, rm --recursive --force
-  // Covers combined flags (-rf, -fr), separated flags (-r -f), and long forms
+  // Covers combined flags (-rf, -fr), separated flags (-r -f), and long forms.
+  // A scoped temp subdirectory (/tmp/<name>, /var/tmp/<name>) is routine CI
+  // cleanup, not a broad delete, so the bare-slash target excludes it;
+  // deleting /tmp itself still matches.
   if (
     /\brm\s+(?:-[A-Za-z]*r[A-Za-z]*\s+-[A-Za-z]*f[A-Za-z]*|-[A-Za-z]*f[A-Za-z]*\s+-[A-Za-z]*r[A-Za-z]*|-(?=[A-Za-z]*r)(?=[A-Za-z]*f)[A-Za-z]+|--recursive\s+--force|--force\s+--recursive)/i.test(command) &&
-    /\brm\s+.+\s+["']?(?:\/|\*|~|\$(?:HOME|\{HOME\})|%USERPROFILE%|[A-Za-z]:[\\/])/i.test(command) ||
-    /\brm\s+(?:-[A-Za-z]*r[A-Za-z]*\s+-[A-Za-z]*f[A-Za-z]*|-[A-Za-z]*f[A-Za-z]*\s+-[A-Za-z]*r[A-Za-z]*|-(?=[A-Za-z]*r)(?=[A-Za-z]*f)[A-Za-z]+)\s+["']?(?:\/|\*|~|\$(?:HOME|\{HOME\})|%USERPROFILE%)/i.test(command)
+    /\brm\s+.+\s+["']?(?:\/(?!(?:var\/)?tmp\/[^\s"'])|\*|~|\$(?:HOME|\{HOME\})|%USERPROFILE%|[A-Za-z]:[\\/])/i.test(command) ||
+    /\brm\s+(?:-[A-Za-z]*r[A-Za-z]*\s+-[A-Za-z]*f[A-Za-z]*|-[A-Za-z]*f[A-Za-z]*\s+-[A-Za-z]*r[A-Za-z]*|-(?=[A-Za-z]*r)(?=[A-Za-z]*f)[A-Za-z]+)\s+["']?(?:\/(?!(?:var\/)?tmp\/[^\s"'])|\*|~|\$(?:HOME|\{HOME\})|%USERPROFILE%)/i.test(command)
   ) {
     findings.push({
       id: "recursive_delete",

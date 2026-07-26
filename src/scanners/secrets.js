@@ -81,15 +81,20 @@ export function scanSensitiveFileName(relativePath, basename) {
     return [];
   }
 
+  // Same reasoning as secret content: sensitive-looking names under test or
+  // fixture paths are usually deliberate test data, so report at low severity.
+  const inTestContext = isTestPath(relativePath);
+
   return [
     {
       id: "secret.sensitive_filename",
-      severity: "medium",
+      severity: inTestContext ? "low" : "medium",
       title: "Sensitive-looking file is agent-readable",
       file: relativePath,
       line: null,
       evidence: relativePath,
-      recommendation: "Keep this file out of git and add it to .agentignore unless agents explicitly need it."
+      recommendation: "Keep this file out of git and add it to .agentignore unless agents explicitly need it.",
+      ...(inTestContext ? { why: TEST_CONTEXT_WHY } : {})
     }
   ];
 }

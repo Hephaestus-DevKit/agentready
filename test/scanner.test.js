@@ -759,6 +759,43 @@ test("scanProject does not flag dangerous keywords inside pure echo lines", asyn
   assert.equal(sudoFindings[0].line, 2);
 });
 
+test("scanProject does not flag scoped temp directory cleanup as recursive delete", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  await writeFile(path.join(root, "AGENTS.md"), "# AGENTS.md\n", "utf8");
+  await writeFile(path.join(root, ".agentignore"), ".env\n", "utf8");
+  await writeFile(
+    path.join(root, "cleanup.sh"),
+    "rm -rf /tmp/project-build-cache\nrm -rf /var/tmp/project-staging\nrm -rf /tmp\nrm -rf /\n",
+    "utf8"
+  );
+
+  const result = await scanProject(root);
+  const deletes = result.findings.filter((f) => f.id === "script.dangerous_command.recursive_delete");
+  const lines = deletes.map((f) => f.line).sort();
+
+  // Scoped /tmp and /var/tmp subdirectories are routine cleanup; deleting
+  // /tmp itself or / must still be flagged.
+  assert.deepEqual(lines, [3, 4]);
+});
+
+test("scanProject reports sensitive filenames in fixture paths at low severity", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const fixtureDir = path.join(root, "fixtures", "evaluation");
+  await mkdir(fixtureDir, { recursive: true });
+  await writeFile(path.join(root, "AGENTS.md"), "# AGENTS.md\n", "utf8");
+  await writeFile(path.join(root, ".agentignore"), ".env\n", "utf8");
+  await writeFile(path.join(fixtureDir, "possible-secret-skips.json"), "{}\n", "utf8");
+  await writeFile(path.join(root, "real-secret-config.json"), "{}\n", "utf8");
+
+  const result = await scanProject(root);
+  const fixtureFinding = result.findings.find((f) => f.file === "fixtures/evaluation/possible-secret-skips.json");
+  const rootFinding = result.findings.find((f) => f.file === "real-secret-config.json");
+
+  assert.equal(fixtureFinding?.id, "secret.sensitive_filename");
+  assert.equal(fixtureFinding?.severity, "low");
+  assert.equal(rootFinding?.severity, "medium");
+});
+
 test("scanProject allows placeholder values in MCP configuration", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
   await writeFile(path.join(root, "AGENTS.md"), "# AGENTS.md\n", "utf8");

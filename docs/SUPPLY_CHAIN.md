@@ -53,7 +53,7 @@ Reference: [OpenSSF Scorecard](https://openssf.org/scorecard/)
 
 ## Tagging
 
-Use immutable release tags such as `v0.1.0`. Do not move published tags. If a
+Use immutable release tags such as `v1.0.2`. Do not move published tags. If a
 release is bad, publish a new patch version instead of rewriting history.
 
 ## Baseline

@@ -49,7 +49,7 @@ the release notes and rotate the token after use.
 
 ## Tags
 
-Use immutable release tags such as `v0.1.0`. Do not move a published tag.
+Use immutable release tags such as `v1.0.2`. Do not move a published tag.
 Keep the tag aligned with `package.json` version and publish a patch release
 instead of moving an existing tag.
 

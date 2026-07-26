@@ -51,7 +51,7 @@ export const RULE_CATALOG = [
   rule("mcp.metadata_endpoint", "high", "MCP configuration references a cloud metadata endpoint", "Remove metadata endpoint access from MCP configuration and review credential exposure."),
   rule("secret.stripe_key", "high", "Stripe live API key is present", "Rotate the key and move it to scoped secret storage."),
   rule("secret.google_api_key", "high", "Google API key is present", "Restrict the key scope and move it to secret storage."),
-  rule("secret.slack_token", "high", "Slack token is present", "Rotate the token and use scoped secret storage."),
+  rule("secret.slack_token", "high", "Slack bot token is present", "Rotate the token and use scoped secret storage."),
   rule("secret.slack_app_token", "high", "Slack app-level token is present", "Rotate the token and use scoped secret storage."),
   rule("secret.jwt_token", "medium", "Hardcoded JWT token detected", "Tokens should be generated dynamically, not stored in source files."),
   rule("python.unpinned_requirement", "low", "Unpinned Python dependency", "Pin dependency versions for reproducible agent and CI runs."),
@@ -61,7 +61,7 @@ export const RULE_CATALOG = [
   rule("doctor.write", "info", "Workspace write access", "Ensure report output and init can write to the workspace.")
 ];
 
-export const RULE_BY_ID = new Map(RULE_CATALOG.map((item) => [item.id, item]));
+const RULE_BY_ID = new Map(RULE_CATALOG.map((item) => [item.id, item]));
 
 export function enrichFindings(findings) {
   return findings.map((finding) => {
@@ -167,5 +167,3 @@ function whyForCategory(category) {
 
   return descriptions[category] || "This finding affects the safety or reproducibility of AI-assisted development.";
 }
-
-// escapeMarkdown is imported from utils.js

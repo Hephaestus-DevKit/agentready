@@ -12,11 +12,6 @@ test("perfect score when there are no findings", () => {
   assert.deepEqual(result.deductions, { high: 0, medium: 0, low: 0 });
 });
 
-test("empty findings array returns score 100", () => {
-  const { score } = calculateScore([]);
-  assert.equal(score, 100);
-});
-
 test("high severity deducts 10 points per finding", () => {
   const findings = [{ severity: "high" }, { severity: "high" }];
   const { score, deductions } = calculateScore(findings);
@@ -57,12 +52,6 @@ test("mixed severities are deducted correctly", () => {
   assert.deepEqual(deductions, { high: 10, medium: 4, low: 1 });
 });
 
-test("score floors at 0 with many high findings", () => {
-  const findings = Array.from({ length: 20 }, () => ({ severity: "high" }));
-  const { score } = calculateScore(findings);
-  assert.equal(score, 0);
-});
-
 test("score floors at 0, never goes negative", () => {
   const findings = Array.from({ length: 50 }, () => ({ severity: "high" }));
   const { score } = calculateScore(findings);
@@ -70,12 +59,6 @@ test("score floors at 0, never goes negative", () => {
 });
 
 // -- grade thresholds ---------------------------------------------------------
-
-test("score 100 → grade ready", () => {
-  const { grade, color } = calculateScore([]);
-  assert.equal(grade, "ready");
-  assert.equal(color, "brightgreen");
-});
 
 test("score 90 → grade ready (lower boundary)", () => {
   // 100 - 10 = 90 → one high finding
@@ -156,30 +139,15 @@ test("score 0 → grade critical", () => {
   assert.equal(color, "red");
 });
 
-// -- formatBadgeUrl -----------------------------------------------------------
+// -- formatBadgeUrl / formatBadgeMarkdown -------------------------------------
 
 test("formatBadgeUrl returns a shields.io URL", () => {
-  const url = formatBadgeUrl(92, "ready", "brightgreen");
+  const url = formatBadgeUrl(92, "brightgreen");
   assert.equal(url, "https://img.shields.io/badge/AgentReady-Score_92-brightgreen");
 });
 
-test("formatBadgeUrl embeds score 0 correctly", () => {
-  const url = formatBadgeUrl(0, "critical", "red");
-  assert.equal(url, "https://img.shields.io/badge/AgentReady-Score_0-red");
-});
-
-// -- formatBadgeMarkdown ------------------------------------------------------
-
 test("formatBadgeMarkdown returns markdown image embed", () => {
-  const md = formatBadgeMarkdown(92, "ready", "brightgreen");
-  assert.equal(
-    md,
-    "![AgentReady Score: 92](https://img.shields.io/badge/AgentReady-Score_92-brightgreen)"
-  );
-});
-
-test("formatBadgeMarkdown works with score 0", () => {
-  const md = formatBadgeMarkdown(0, "critical", "red");
+  const md = formatBadgeMarkdown(0, "red");
   assert.equal(
     md,
     "![AgentReady Score: 0](https://img.shields.io/badge/AgentReady-Score_0-red)"

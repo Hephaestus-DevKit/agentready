@@ -1,10 +1,10 @@
 import { readFile } from "node:fs/promises";
-import path from "node:path";
+import { repoPath } from "./helpers.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
 test("release workflow is configured for npm Trusted Publishing", async () => {
-  const workflow = await readFile(path.join(".github", "workflows", "release.yml"), "utf8");
+  const workflow = await readFile(repoPath(".github", "workflows", "release.yml"), "utf8");
 
   assert.match(workflow, /id-token:\s*write/);
   assert.match(workflow, /actions\/checkout@v7/);
@@ -21,7 +21,7 @@ test("release workflow is configured for npm Trusted Publishing", async () => {
 });
 
 test("composite action exposes scan-size and SARIF controls", async () => {
-  const action = await readFile("action.yml", "utf8");
+  const action = await readFile(repoPath("action.yml"), "utf8");
 
   assert.match(action, /max-file-size:/);
   assert.match(action, /AGENTREADY_INPUT_MAX_FILE_SIZE/);
@@ -35,7 +35,7 @@ test("composite action exposes scan-size and SARIF controls", async () => {
 });
 
 test("ci workflow uses the supported Node matrix and current action versions", async () => {
-  const workflow = await readFile(path.join(".github", "workflows", "ci.yml"), "utf8");
+  const workflow = await readFile(repoPath(".github", "workflows", "ci.yml"), "utf8");
 
   assert.match(workflow, /node-version:\s*\[20,\s*22,\s*24\]/);
   assert.doesNotMatch(workflow, /actions\/checkout@v4/);
@@ -46,7 +46,7 @@ test("ci workflow uses the supported Node matrix and current action versions", a
 });
 
 test("repository settings match CI matrix and trusted publisher fields", async () => {
-  const settings = await readFile(path.join("docs", "REPOSITORY_SETTINGS.md"), "utf8");
+  const settings = await readFile(repoPath("docs", "REPOSITORY_SETTINGS.md"), "utf8");
 
   for (const os of ["ubuntu-latest", "windows-latest", "macos-latest"]) {
     for (const nodeVersion of [20, 22, 24]) {
@@ -61,7 +61,7 @@ test("repository settings match CI matrix and trusted publisher fields", async (
 });
 
 test("scorecard workflow uploads SARIF with current action versions", async () => {
-  const workflow = await readFile(path.join(".github", "workflows", "scorecard.yml"), "utf8");
+  const workflow = await readFile(repoPath(".github", "workflows", "scorecard.yml"), "utf8");
 
   assert.match(workflow, /actions\/checkout@v7/);
   assert.match(workflow, /ossf\/scorecard-action@v2\.4\.3/);
@@ -70,7 +70,7 @@ test("scorecard workflow uploads SARIF with current action versions", async () =
 });
 
 test("init CI template uses current GitHub action versions", async () => {
-  const source = await readFile(path.join("src", "init.js"), "utf8");
+  const source = await readFile(repoPath("src", "init.js"), "utf8");
 
   assert.match(source, /actions\/checkout@v7/);
   assert.match(source, /actions\/setup-node@v6/);
@@ -80,8 +80,8 @@ test("init CI template uses current GitHub action versions", async () => {
 });
 
 test("init CI template runs the published scoped package via npx", async () => {
-  const source = await readFile(path.join("src", "init.js"), "utf8");
-  const manifest = JSON.parse(await readFile("package.json", "utf8"));
+  const source = await readFile(repoPath("src", "init.js"), "utf8");
+  const manifest = JSON.parse(await readFile(repoPath("package.json"), "utf8"));
 
   // The generated workflow has no install step, so npx fetches from the
   // registry: the package spec must match the real published name. A bare
@@ -92,15 +92,17 @@ test("init CI template runs the published scoped package via npx", async () => {
 });
 
 test("package exposes the market readiness gate", async () => {
-  const manifest = JSON.parse(await readFile("package.json", "utf8"));
+  const manifest = JSON.parse(await readFile(repoPath("package.json"), "utf8"));
 
   assert.equal(manifest.scripts["market:check"], "node ./scripts/market-check.mjs");
   assert.equal(manifest.scripts.prepublishOnly, "npm run market:check");
-  assert.ok(manifest.files.includes("scripts/"));
+  // The gate is repo-only tooling: it must not ship to npm consumers.
+  assert.ok(!manifest.files.includes("scripts/"));
+  assert.ok(!manifest.files.includes(".agentignore"));
 });
 
 test("market readiness gate guards recursive temp cleanup", async () => {
-  const script = await readFile(path.join("scripts", "market-check.mjs"), "utf8");
+  const script = await readFile(repoPath("scripts", "market-check.mjs"), "utf8");
 
   assert.match(script, /function safeRemoveTempDir/);
   assert.match(script, /Refusing to remove unexpected temp path/);
@@ -109,7 +111,7 @@ test("market readiness gate guards recursive temp cleanup", async () => {
 });
 
 test("market readiness gate blocks stale public workflow patterns", async () => {
-  const script = await readFile(path.join("scripts", "market-check.mjs"), "utf8");
+  const script = await readFile(repoPath("scripts", "market-check.mjs"), "utf8");
 
   assert.match(script, /actions\/checkout@/);
   assert.match(script, /actions\/setup-node@/);

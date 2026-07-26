@@ -1,6 +1,6 @@
 {
   "name": "@hepheastus-devkit/agentready",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "description": "Preflight security scanner for AI coding agent access to software projects.",
   "type": "module",
   "bin": {
@@ -9,11 +9,9 @@
   "files": [
     "bin/",
     "src/",
-    "scripts/",
     "docs/",
     "schema/",
     "AGENTS.md",
-    ".agentignore",
     "README.md",
     "CHANGELOG.md",
     "CONTRIBUTING.md",

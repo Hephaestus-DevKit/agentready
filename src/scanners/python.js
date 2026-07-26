@@ -14,7 +14,9 @@ export function scanPythonProjectFiles(relativePath, basename, content) {
       if (/https?:\/\//.test(line) || /\s+@\s+/.test(line)) {
         continue;
       }
-      if (!/[=<>~!]=/.test(line)) {
+      // Any version constraint counts, including bare ranges (`numpy>1.2`):
+      // the rule targets requirements with no constraint at all.
+      if (!/[=<>~!]=|[<>]/.test(line)) {
         findings.push({
           id: "python.unpinned_requirement",
           severity: "low",
@@ -44,8 +46,23 @@ export function scanPythonProjectFiles(relativePath, basename, content) {
 }
 
 function hasRequiresPython(content) {
-  return splitLines(content).some((line) => {
+  let inPoetryDependencies = false;
+  for (const line of splitLines(content)) {
     const trimmed = line.trim();
-    return trimmed && !trimmed.startsWith("#") && /^requires-python\s*=/.test(trimmed);
-  });
+    if (!trimmed || trimmed.startsWith("#")) {
+      continue;
+    }
+    if (/^requires-python\s*=/.test(trimmed)) {
+      return true;
+    }
+    if (/^\[/.test(trimmed)) {
+      inPoetryDependencies = /^\[tool\.poetry\.dependencies\]/.test(trimmed);
+      continue;
+    }
+    // Poetry projects declare the interpreter as a dependency instead.
+    if (inPoetryDependencies && /^python\s*=/.test(trimmed)) {
+      return true;
+    }
+  }
+  return false;
 }

@@ -40,7 +40,7 @@ export function calculateScore(findings) {
   }
 
   const totalDeduction = deductions.high + deductions.medium + deductions.low;
-  const score = Math.max(0, Math.min(100, 100 - totalDeduction));
+  const score = Math.max(0, 100 - totalDeduction);
 
   const { grade, color } = GRADE_TABLE.find((entry) => score >= entry.min);
 
@@ -51,11 +51,10 @@ export function calculateScore(findings) {
  * Build a shields.io badge URL for the given score.
  *
  * @param {number} score
- * @param {string} _grade  – unused, kept for a uniform call signature
  * @param {string} color
  * @returns {string}
  */
-export function formatBadgeUrl(score, _grade, color) {
+export function formatBadgeUrl(score, color) {
   return `https://img.shields.io/badge/AgentReady-Score_${score}-${color}`;
 }
 
@@ -63,11 +62,9 @@ export function formatBadgeUrl(score, _grade, color) {
  * Build a Markdown image embed for the shields.io badge.
  *
  * @param {number} score
- * @param {string} grade  – unused, kept for a uniform call signature
  * @param {string} color
  * @returns {string}
  */
-export function formatBadgeMarkdown(score, grade, color) {
-  const url = formatBadgeUrl(score, grade, color);
-  return `![AgentReady Score: ${score}](${url})`;
+export function formatBadgeMarkdown(score, color) {
+  return `![AgentReady Score: ${score}](${formatBadgeUrl(score, color)})`;
 }

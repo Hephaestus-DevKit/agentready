@@ -25,6 +25,9 @@ export function scanPackageJson(relativePath, basename, content) {
 
   const findings = [];
   const findLineIn = createLineFinder(content);
+  // Search for script names from the "scripts" block onward, so a dependency
+  // with the same name earlier in the file does not steal the line number.
+  const scriptsLine = findLineIn('"scripts"') ?? 1;
   // Guard: scripts must be a plain object (not array, string, etc.)
   const scripts =
     parsed.scripts && typeof parsed.scripts === "object" && !Array.isArray(parsed.scripts)
@@ -38,7 +41,7 @@ export function scanPackageJson(relativePath, basename, content) {
         severity: commandFinding.severity,
         title: `Risky npm script: ${name}`,
         file: relativePath,
-        line: findLineIn(`"${name}"`),
+        line: findLineIn(`"${name}"`, scriptsLine),
         evidence: `${name}: ${redact(String(command))}`,
         recommendation: commandFinding.recommendation
       });
@@ -52,7 +55,7 @@ export function scanPackageJson(relativePath, basename, content) {
         severity: "medium",
         title: `Package lifecycle script detected: ${lifecycle}`,
         file: relativePath,
-        line: findLineIn(`"${lifecycle}"`),
+        line: findLineIn(`"${lifecycle}"`, scriptsLine),
         evidence: `${lifecycle}: ${redact(String(scripts[lifecycle]))}`,
         recommendation: "Review lifecycle scripts before allowing agents or CI to install dependencies automatically."
       });

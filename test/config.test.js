@@ -1,5 +1,5 @@
-import { mkdtemp, writeFile } from "node:fs/promises";
-import os from "node:os";
+import { writeFile } from "node:fs/promises";
+import { makeTempDir, writeLifecyclePackage } from "./helpers.js";
 import path from "node:path";
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -7,7 +7,7 @@ import { applyCliOverrides, loadConfig, matchesAnyPath, shouldFail } from "../sr
 import { scanProject } from "../src/scanner.js";
 
 test("loadConfig applies ignore rules, ignore paths, severity overrides, and fail threshold", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   await writeFile(
     path.join(root, ".agentready.json"),
     JSON.stringify({
@@ -21,15 +21,7 @@ test("loadConfig applies ignore rules, ignore paths, severity overrides, and fai
     }),
     "utf8"
   );
-  await writeFile(
-    path.join(root, "package.json"),
-    JSON.stringify({
-      scripts: {
-        postinstall: "node setup.js"
-      }
-    }),
-    "utf8"
-  );
+  await writeLifecyclePackage(root);
 
   const { config } = await loadConfig(root);
   const result = await scanProject(root, { config });
@@ -44,7 +36,7 @@ test("loadConfig applies ignore rules, ignore paths, severity overrides, and fai
 });
 
 test("loadConfig trims configured ignore arrays", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   await writeFile(
     path.join(root, ".agentready.json"),
     JSON.stringify({
@@ -103,7 +95,7 @@ test("applyCliOverrides trims CLI ignore values", () => {
 });
 
 test("loadConfig warns on invalid maxFileBytes", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   await writeFile(
     path.join(root, ".agentready.json"),
     JSON.stringify({
@@ -129,7 +121,7 @@ test("matchesAnyPath supports exact, directory, and glob-style patterns", () => 
 });
 
 test("loadConfig reports unknown rule ids as warnings", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   await writeFile(
     path.join(root, ".agentready.json"),
     JSON.stringify({
@@ -150,7 +142,7 @@ test("loadConfig reports unknown rule ids as warnings", async () => {
 });
 
 test("loadConfig reports unknown top-level fields", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   await writeFile(
     path.join(root, ".agentready.json"),
     JSON.stringify({
@@ -167,7 +159,7 @@ test("loadConfig reports unknown top-level fields", async () => {
 });
 
 test("loadConfig handles non-object configuration roots", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   await writeFile(path.join(root, ".agentready.json"), "[]", "utf8");
 
   const { config, warnings } = await loadConfig(root);

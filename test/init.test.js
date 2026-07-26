@@ -1,20 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { withTempDir } from "./helpers.js";
 import { runInit } from "../src/init.js";
-
-async function withTempDir(fn) {
-  const dir = path.join(tmpdir(), `agentready-init-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-  await mkdir(dir, { recursive: true });
-  try {
-    return await fn(dir);
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-}
 
 test("init creates AGENTS.md, .agentignore, and .agentready.json", async () => {
   await withTempDir(async (dir) => {

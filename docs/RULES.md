@@ -43,7 +43,9 @@ them as blocking again.
 
 Values that start with obvious placeholder instructions (`change-this`,
 `replace-`, `your-`, `fill-in`, and similar) are not reported as secrets in
-sensitive files or MCP configurations.
+sensitive files or MCP configurations. GitHub Actions template expressions
+(`${{ secrets.NAME }}`) and environment references (`$NAME`, `${NAME}`,
+`%NAME%`) are treated as placeholders too.
 
 ## Market-Critical Coverage
 

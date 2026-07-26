@@ -3,11 +3,11 @@
 ## Summary
 
 - Root: `/workspace/clean-service`
-- Generated: 2026-06-03T00:00:00.000Z
-- Duration: 42ms
-- Files scanned: 61
+- Generated: 2026-07-26T00:00:00.000Z
+- Duration: 5ms
+- Files scanned: 3
 - Status: ready
-- Config: `/workspace/clean-service/.agentready.json`
+- Config: `(defaults)`
 - CI fail threshold: medium
 
 | Severity | Count |
@@ -23,6 +23,5 @@ No findings detected.
 
 ## Next Steps
 
-- Keep AgentReady in CI with agentready scan . --ci.
+- Run agentready quickstart . to preview the recommended setup path.
 - Run agentready scan . --format markdown --output agentready-report.md when you need a shareable report.
-

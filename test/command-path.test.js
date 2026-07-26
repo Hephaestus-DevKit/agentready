@@ -1,5 +1,5 @@
-import { mkdir, mkdtemp } from "node:fs/promises";
-import os from "node:os";
+import { mkdir } from "node:fs/promises";
+import { makeTempDir } from "./helpers.js";
 import path from "node:path";
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -7,7 +7,7 @@ import { formatCommandPath } from "../src/command-path.js";
 
 test("formatCommandPath quotes shell-sensitive paths literally", async () => {
   const previousCwd = process.cwd();
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-command-path-"));
+  const root = await makeTempDir("agentready-command-path-");
   const target = path.join(root, "project $HOME `date`");
   await mkdir(target);
 

@@ -26,7 +26,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: Hephaestus-DevKit/agentready@v1
+      - uses: Hephaestus-DevKit/agentready@v1.1.0
         with:
           fail-on: medium
           format: sarif
@@ -112,7 +112,9 @@ agentready scan . --ci --fail-on medium
 ## Composite Action Inputs
 
 - `path`: project path to scan, default `.`
-- `fail-on`: `high`, `medium`, `low`, `info`, or `none`
+- `fail-on`: `high`, `medium`, `low`, `info`, or `none`; when omitted, the
+  `failOn` value from the project's AgentReady configuration applies
+  (default `medium`)
 - `format`: `text`, `json`, `markdown`, or `sarif`
 - `output`: optional report output path
 - `baseline`: optional baseline file path

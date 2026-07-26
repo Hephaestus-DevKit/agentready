@@ -229,8 +229,6 @@ function normalizeBaselineFindings(findings) {
     }));
 }
 
-// summarizeSeverities is imported from utils.js
-
 function countBy(findings, keyFn) {
   const counts = new Map();
   for (const finding of findings) {

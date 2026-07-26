@@ -1,5 +1,6 @@
 import { classifyDangerousCommand } from "./shell.js";
-import { escapeRegExp, redact, splitLines } from "./utils.js";
+import { escapeRegExp } from "../utils.js";
+import { redact, splitLines } from "./utils.js";
 
 export function scanGitHubActions(relativePath, content) {
   if (!relativePath.startsWith(".github/workflows/") || !/\.(?:yml|yaml)$/i.test(relativePath)) {
@@ -35,11 +36,23 @@ export function scanGitHubActions(relativePath, content) {
         inRunBlock = false;
       } else {
         if (!trimmed.startsWith("#")) {
+          // Join backslash continuations so a piped download split across
+          // lines still reads as one command.
+          let command = trimmed;
+          const commandLine = index + 1;
+          while (/\\\s*$/.test(command) && index + 1 < lines.length) {
+            const next = lines[index + 1];
+            if (next.trim() && getIndent(next) <= runBlockIndent) {
+              break;
+            }
+            command = command.replace(/\\\s*$/, " ") + next.trim();
+            index += 1;
+          }
           runCommands.push({
-            line: index + 1,
-            command: trimmed
+            line: commandLine,
+            command
           });
-          findings.push(...scanGitHubActionRunCommand(relativePath, trimmed, index + 1));
+          findings.push(...scanGitHubActionRunCommand(relativePath, command, commandLine));
         }
         continue;
       }
@@ -56,7 +69,9 @@ export function scanGitHubActions(relativePath, content) {
     let reportedPullRequestTarget = false;
     const onMatch = line.match(/^(\s*)on\s*:\s*(.*)$/);
     if (onMatch) {
-      const value = onMatch[2].trim();
+      // Strip a trailing comment first: `on:  # PR triggers` still opens a
+      // trigger block, and prose in the comment must not register as a trigger.
+      const value = stripYamlComment(onMatch[2]).trim();
       if (!value) {
         inOnBlock = true;
         onBlockIndent = indent;
@@ -67,14 +82,14 @@ export function scanGitHubActions(relativePath, content) {
         reportedPullRequestTarget = true;
       }
       recordTriggers(triggers, value, index + 1);
-    } else if (inOnBlock && containsPullRequestTarget(trimmed)) {
+    } else if (inOnBlock && containsPullRequestTarget(stripYamlComment(trimmed))) {
       findings.push(pullRequestTargetFinding(relativePath, index + 1, trimmed));
       pullRequestTargetLines.push(index + 1);
       reportedPullRequestTarget = true;
     }
 
     if (inOnBlock) {
-      recordTriggers(triggers, trimmed, index + 1);
+      recordTriggers(triggers, stripYamlComment(trimmed), index + 1);
     }
 
     if (!reportedPullRequestTarget && !onMatch && /^\s*pull_request_target\s*:/.test(line)) {
@@ -94,14 +109,14 @@ export function scanGitHubActions(relativePath, content) {
       });
     }
 
-    if (/^\s*id-token\s*:\s*write\s*$/.test(line)) {
+    if (/^\s*id-token\s*:\s*write(?:\s+#.*)?\s*$/.test(line)) {
       idTokenWrites.push({
         line: index + 1,
         evidence: trimmed
       });
     }
 
-    const writePermission = line.match(/^\s*(actions|checks|contents|deployments|issues|packages|pull-requests|statuses)\s*:\s*write\s*$/);
+    const writePermission = line.match(/^\s*(actions|checks|contents|deployments|issues|packages|pull-requests|statuses)\s*:\s*write(?:\s+#.*)?\s*$/);
     if (writePermission) {
       findings.push({
         id: "github_actions.write_permission",
@@ -114,7 +129,7 @@ export function scanGitHubActions(relativePath, content) {
       });
     }
 
-    if (/^\s*secrets\s*:\s*inherit\s*$/.test(line)) {
+    if (/^\s*secrets\s*:\s*inherit(?:\s+#.*)?\s*$/.test(line)) {
       findings.push({
         id: "github_actions.secrets_inherit",
         severity: "medium",
@@ -184,7 +199,9 @@ export function scanGitHubActions(relativePath, content) {
     const runMatch = line.match(/^\s*-?\s*run\s*:\s*(.*)$/);
     if (runMatch) {
       const command = runMatch[1].trim();
-      if (/^[>|][+-]?$/.test(command)) {
+      // Block scalar headers may carry chomping and explicit-indent markers
+      // (`|2`, `>-`) and a trailing comment; all of them start a block.
+      if (/^[>|][0-9+-]{0,2}(?:\s+#.*)?$/.test(command)) {
         inRunBlock = true;
         runBlockIndent = indent;
       } else {
@@ -350,6 +367,11 @@ function containsWord(value, word) {
 
 function getIndent(line) {
   return line.match(/^\s*/)?.[0].length || 0;
+}
+
+function stripYamlComment(value) {
+  // YAML comments start at `#` preceded by whitespace (or at value start).
+  return value.replace(/(^|\s)#.*$/, "$1");
 }
 
 function parseUsesReference(line) {

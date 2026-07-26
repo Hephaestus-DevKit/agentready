@@ -93,6 +93,7 @@ export const TEXT_EXTENSIONS = new Set([
 ]);
 
 export const TEXT_FILE_NAMES = new Set([
+  ".agentignore",
   ".bash_profile",
   ".bashrc",
   ".gitattributes",

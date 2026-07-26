@@ -4,7 +4,7 @@ import path from "node:path";
 import { scanProject } from "./scanner.js";
 import { addFingerprints } from "./fingerprint.js";
 import { enrichFindings } from "./rules.js";
-import { summarizeSeverities } from "./utils.js";
+import { nodeMajor, summarizeSeverities } from "./utils.js";
 import { TOOL_VERSION } from "./version.js";
 
 export async function runDoctor(root, options = {}) {
@@ -15,7 +15,7 @@ export async function runDoctor(root, options = {}) {
 
   checks.push({
     id: "doctor.node",
-    severity: Number(process.versions.node.split(".")[0]) >= 20 ? "info" : "medium",
+    severity: nodeMajor() >= 20 ? "info" : "medium",
     title: "Node.js runtime",
     file: null,
     line: null,

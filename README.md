@@ -45,9 +45,12 @@ files.
 ```text
 AgentReady Report
 Root: /path/to/project
+Generated: 2026-07-26T09:00:00.000Z
 Duration: 48ms
 Files scanned: 184
 Status: action required
+Config: /path/to/project/.agentready.json
+CI fail threshold: medium
 Summary: high=1 medium=2 low=1 info=0
 
 Top risks:
@@ -134,37 +137,6 @@ agentready scan . --ci --fail-on high
 agentready scan . --ci --format sarif --output agentready.sarif
 ```
 
-## GitHub Actions
-
-```yaml
-name: agentready
-
-on:
-  pull_request:
-  push:
-    branches: [main]
-
-permissions:
-  contents: read
-  security-events: write
-
-jobs:
-  scan:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - uses: Hephaestus-DevKit/agentready@v1
-        with:
-          fail-on: medium
-          format: sarif
-          output: agentready.sarif
-          upload-sarif: true
-```
-
-See [CI usage](docs/CI.md) for report-only, baseline, and direct `npx` modes.
-
 Adopt in a legacy project:
 
 ```bash
@@ -189,6 +161,37 @@ Validate configuration:
 ```bash
 agentready config validate .
 ```
+
+## GitHub Actions
+
+```yaml
+name: agentready
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: Hephaestus-DevKit/agentready@v1.1.0
+        with:
+          fail-on: medium
+          format: sarif
+          output: agentready.sarif
+          upload-sarif: true
+```
+
+See [CI usage](docs/CI.md) for report-only, baseline, and direct `npx` modes.
 
 ## Agent Readiness Score
 
@@ -260,7 +263,6 @@ from the scanned project root.
 - [CI usage](docs/CI.md)
 - [Supply chain](docs/SUPPLY_CHAIN.md)
 - [Repository settings](docs/REPOSITORY_SETTINGS.md)
-- [Next steps](NEXT_STEPS.md)
 - [Privacy](docs/PRIVACY.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
 - [Maintainer guide](docs/MAINTAINERS.md)

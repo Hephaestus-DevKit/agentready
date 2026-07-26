@@ -1,20 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { withTempDir } from "./helpers.js";
 import { runDoctor } from "../src/doctor.js";
-
-async function withTempDir(fn) {
-  const dir = path.join(tmpdir(), `agentready-doctor-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-  await mkdir(dir, { recursive: true });
-  try {
-    return await fn(dir);
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-}
 
 test("doctor checks Node.js version and workspace write access", async () => {
   await withTempDir(async (dir) => {
@@ -39,7 +30,14 @@ test("doctor checks Node.js version and workspace write access", async () => {
   });
 });
 
-test("doctor detects missing .git directory", async () => {
+test("doctor detects missing .git directory", async (t) => {
+  // findGitRoot walks up to the filesystem root, so on machines where the
+  // temp dir itself sits inside a git checkout the negative case is untestable.
+  if (hasGitAncestor(tmpdir())) {
+    t.skip("os.tmpdir() is inside a git repository");
+    return;
+  }
+
   await withTempDir(async (dir) => {
     await writeFile(path.join(dir, "AGENTS.md"), "# Agents", "utf8");
     await writeFile(path.join(dir, ".agentignore"), ".env\n", "utf8");
@@ -50,6 +48,20 @@ test("doctor detects missing .git directory", async () => {
     assert.match(gitCheck.evidence, /No .git directory/);
   });
 });
+
+function hasGitAncestor(start) {
+  let current = path.resolve(start);
+  while (true) {
+    if (existsSync(path.join(current, ".git"))) {
+      return true;
+    }
+    const parent = path.dirname(current);
+    if (parent === current) {
+      return false;
+    }
+    current = parent;
+  }
+}
 
 test("doctor includes scan findings alongside environment checks", async () => {
   await withTempDir(async (dir) => {

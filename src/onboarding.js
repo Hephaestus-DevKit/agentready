@@ -3,6 +3,7 @@ import { readdir } from "node:fs/promises";
 import path from "node:path";
 import { formatCommandPath } from "./command-path.js";
 import { CONFIG_FILE_NAMES } from "./config.js";
+import { nodeMajor } from "./utils.js";
 import { PACKAGE_NAME } from "./version.js";
 
 export async function runQuickstart(root) {
@@ -93,8 +94,4 @@ function detectPackageManager(root) {
   }
 
   return { runner: "npx", install: "npm install -D" };
-}
-
-function nodeMajor() {
-  return Number(process.versions.node.split(".")[0]);
 }

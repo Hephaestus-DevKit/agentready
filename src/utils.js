@@ -56,3 +56,11 @@ export function escapeMarkdown(value) {
 export function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
+
+/**
+ * Major version of the running Node.js runtime.
+ * Shared by doctor and quickstart runtime checks.
+ */
+export function nodeMajor() {
+  return Number(process.versions.node.split(".")[0]);
+}

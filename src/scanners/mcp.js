@@ -2,12 +2,27 @@ import { createLineFinder, looksLikePlaceholderValue, redact } from "./utils.js"
 
 export const MCP_CONFIG_NAMES = new Set([
   "claude_desktop_config.json",
+  ".mcp.json",
   "mcp.json",
   "mcp-config.json"
 ]);
 
+export function isMcpConfigPath(relativePath, basename) {
+  const lowerBasename = basename.toLowerCase();
+  if (MCP_CONFIG_NAMES.has(lowerBasename)) {
+    return true;
+  }
+  if (/^\.?mcp[-_.]/.test(lowerBasename) && lowerBasename.endsWith(".json")) {
+    return true;
+  }
+  // Match mcp/, .mcp/, mcp-servers/ directory segments anywhere in the path,
+  // but not names that merely start with "mcp" (e.g. mcparse/).
+  const directorySegments = relativePath.split("/").slice(0, -1);
+  return directorySegments.some((segment) => /^\.?mcp(?:$|[-_])/i.test(segment));
+}
+
 export function scanMcpConfig(relativePath, basename, content) {
-  if (!MCP_CONFIG_NAMES.has(basename) && !relativePath.includes("/mcp")) {
+  if (!isMcpConfigPath(relativePath, basename)) {
     return [];
   }
 
@@ -20,42 +35,44 @@ export function scanMcpConfig(relativePath, basename, content) {
 
   const findings = [];
   const findLineIn = createLineFinder(content);
-  const serialized = JSON.stringify(parsed, null, 2);
   const stringValues = collectJsonStrings(parsed);
   const entries = collectJsonEntries(parsed);
 
-  if (/\b(cmd|powershell|pwsh|bash|sh)\b/i.test(serialized)) {
+  const shellCommand = findShellCommand(entries);
+  if (shellCommand) {
     findings.push({
       id: "mcp.shell_tool",
       severity: "medium",
       title: "MCP configuration can launch a shell",
       file: relativePath,
-      line: findLineIn("command"),
-      evidence: "Shell-like command found in MCP configuration.",
+      line: findLineIn(shellCommand),
+      evidence: `Shell command "${shellCommand}" found in MCP configuration.`,
       recommendation: "Restrict shell-capable MCP servers and require human approval for destructive commands."
     });
   }
 
-  if (stringValues.some(isBroadFilesystemPath)) {
+  const broadPath = stringValues.find(isBroadFilesystemPath);
+  if (broadPath) {
     findings.push({
       id: "mcp.broad_filesystem",
       severity: "medium",
       title: "MCP configuration may expose broad filesystem access",
       file: relativePath,
-      line: null,
-      evidence: "Absolute or home/root path found in MCP configuration.",
+      line: findLineIn(broadPath),
+      evidence: `Broad filesystem path "${broadPath.trim()}" found in MCP configuration.`,
       recommendation: "Limit filesystem MCP servers to the smallest project-specific directories."
     });
   }
 
-  if (hasInlineSecretValue(parsed)) {
+  const inlineSecret = findInlineSecretEntry(entries);
+  if (inlineSecret) {
     findings.push({
       id: "mcp.inline_secret",
       severity: "high",
       title: "MCP configuration appears to contain inline secret values",
       file: relativePath,
-      line: null,
-      evidence: "Secret-like inline value found in MCP configuration.",
+      line: findLineIn(inlineSecret.key),
+      evidence: `Secret-like inline value assigned to "${inlineSecret.key}" in MCP configuration.`,
       recommendation: "Move secrets out of MCP config files and inject them through scoped environment secret storage."
     });
   }
@@ -155,21 +172,37 @@ function collectJsonEntries(value, path = [], collected = [], depth = 0) {
   return collected;
 }
 
-function hasInlineSecretValue(value) {
-  if (Array.isArray(value)) {
-    return value.some((item) => hasInlineSecretValue(item));
-  }
+const SHELL_COMMAND_NAMES = new Set([
+  "cmd", "cmd.exe",
+  "powershell", "powershell.exe",
+  "pwsh", "pwsh.exe",
+  "bash", "bash.exe",
+  "sh", "zsh", "dash", "ksh"
+]);
 
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-
-  return Object.entries(value).some(([key, item]) => {
-    if (isSecretLikeKey(key) && isInlineSecretString(item)) {
-      return true;
+function findShellCommand(entries) {
+  for (const entry of entries) {
+    const key = normalizeKey(entry.key);
+    if (key === "command" && typeof entry.value === "string" && isShellExecutable(entry.value)) {
+      return entry.value;
     }
-    return hasInlineSecretValue(item);
-  });
+    if (key === "args" && Array.isArray(entry.value)) {
+      const shellArg = entry.value.find((item) => typeof item === "string" && isShellExecutable(item));
+      if (shellArg) {
+        return shellArg;
+      }
+    }
+  }
+  return null;
+}
+
+function isShellExecutable(value) {
+  const executable = value.trim().toLowerCase().split(/[\\/]/).pop();
+  return SHELL_COMMAND_NAMES.has(executable);
+}
+
+function findInlineSecretEntry(entries) {
+  return entries.find((entry) => isSecretLikeKey(entry.key) && isInlineSecretString(entry.value)) || null;
 }
 
 function findAuthorizationPassthrough(entries) {
@@ -221,20 +254,33 @@ function isAuthorizationHeaderKey(key) {
 }
 
 function isBearerValue(value) {
-  return /\bBearer\s+(?:\$\{|%[A-Z_][A-Z0-9_]*%|[A-Za-z0-9._~+/=-]{8,})/i.test(String(value));
+  return /\bBearer\s+(?:\$\{?[A-Za-z_]|%[A-Z_][A-Z0-9_]*%|[A-Za-z0-9._~+/=-]{8,})/i.test(String(value));
 }
 
 function normalizeKey(key) {
   return String(key).replace(/[-_\s]/g, "").toLowerCase();
 }
 
+const SECRET_KEY_SEGMENTS = new Set([
+  "token", "secret", "password", "passwd", "authorization", "credential", "credentials", "apikey"
+]);
+
 function isSecretLikeKey(key) {
   const normalized = normalizeKey(key);
   if (normalized === "tokenurl" || normalized === "authorizationurl") {
     return false;
   }
-  // Apply regex to normalized key so spaces/separators don't cause misses
-  return /(api_?key|apikey|token|secret|password|authorization)/i.test(normalized);
+  // Match whole word segments only (split on separators and camelCase),
+  // so keys like "tokenizer" don't flag on the embedded "token".
+  const segments = String(key)
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .toLowerCase()
+    .split(/[-_\s.]+/)
+    .filter(Boolean);
+  if (segments.some((segment) => SECRET_KEY_SEGMENTS.has(segment))) {
+    return true;
+  }
+  return segments.some((segment, index) => segment === "api" && segments[index + 1] === "key");
 }
 
 function isInlineSecretString(value) {

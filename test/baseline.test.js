@@ -1,5 +1,5 @@
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
-import os from "node:os";
+import { readFile, writeFile } from "node:fs/promises";
+import { makeLifecycleProject, makeTempDir, writeLifecyclePackage } from "./helpers.js";
 import path from "node:path";
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -7,16 +7,7 @@ import { diffBaseline, loadBaseline, loadBaselineFile, writeBaseline, writePrune
 import { scanProject } from "../src/scanner.js";
 
 test("baseline suppresses matching findings by fingerprint", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
-  await writeFile(
-    path.join(root, "package.json"),
-    JSON.stringify({
-      scripts: {
-        postinstall: "node setup.js"
-      }
-    }),
-    "utf8"
-  );
+  const root = await makeLifecycleProject();
 
   const firstScan = await scanProject(root);
   const baselinePath = path.join(root, ".agentready-baseline.json");
@@ -31,7 +22,7 @@ test("baseline suppresses matching findings by fingerprint", async () => {
 });
 
 test("writeBaseline stores stable finding metadata", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   const scan = await scanProject(root);
   const baselinePath = path.join(root, ".agentready-baseline.json");
   await writeBaseline(baselinePath, scan);
@@ -46,17 +37,9 @@ test("writeBaseline stores stable finding metadata", async () => {
 });
 
 test("writePrunedBaseline preserves firstSeenAt and refreshes lastSeenAt", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   const baselinePath = path.join(root, ".agentready-baseline.json");
-  await writeFile(
-    path.join(root, "package.json"),
-    JSON.stringify({
-      scripts: {
-        postinstall: "node setup.js"
-      }
-    }),
-    "utf8"
-  );
+  await writeLifecyclePackage(root);
 
   const scan = await scanProject(root);
   await writeBaseline(baselinePath, scan);
@@ -78,7 +61,7 @@ test("writePrunedBaseline preserves firstSeenAt and refreshes lastSeenAt", async
 });
 
 test("loadBaseline rejects invalid baseline structure", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   await writeFile(path.join(root, ".agentready-baseline.json"), "[]", "utf8");
 
   await assert.rejects(
@@ -88,7 +71,7 @@ test("loadBaseline rejects invalid baseline structure", async () => {
 });
 
 test("loadBaseline rejects missing findings array", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   await writeFile(path.join(root, ".agentready-baseline.json"), "{\"version\":1}", "utf8");
 
   await assert.rejects(

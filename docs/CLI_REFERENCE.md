@@ -13,6 +13,7 @@ agentready quickstart [path]
 agentready doctor [path]
 agentready config validate [path]
 agentready list-rules
+agentready badge [path]
 agentready version
 ```
 
@@ -141,7 +142,27 @@ agentready doctor . --summary-only
 agentready doctor . --group-by category
 agentready doctor . --quiet
 agentready doctor . --verbose
+agentready doctor . --no-color
 ```
 
 `doctor` checks the local runtime and workspace, then includes scan results. It
 respects the same configuration and baseline inputs as `scan`.
+
+## Badge Options
+
+```bash
+agentready badge .
+agentready badge . --format text|json|markdown
+agentready badge . --config .agentready.json
+agentready badge . --baseline .agentready-baseline.json
+agentready badge . --ignore-rule python.unpinned_requirement
+agentready badge . --ignore-path "fixtures/**"
+agentready badge . --max-file-size 1048576
+```
+
+`badge` scans the project and prints an Agent Readiness Score (0–100) with a
+shields.io badge URL and Markdown embed. Deductions are 10 points per high,
+4 per medium, and 1 per low finding. It respects the same configuration and
+baseline inputs as `scan`, so a baseline-suppressed project scores the same in
+both commands. `--format json` includes the score, grade, color, deductions,
+and both badge strings.

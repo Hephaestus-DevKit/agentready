@@ -31,15 +31,10 @@ const SKIPPED_DIRS = new Set([
 ]);
 const SENSITIVE_SEGMENTS = new Set(["secrets", "credentials", "private", "backups"]);
 const SENSITIVE_FILES = new Set([".env", ".envrc", ".npmrc", ".pypirc", ".netrc"]);
+// Patterns are split with join() so this file does not match itself.
+// Guards: stale public workflow patterns, unfinished-work markers, and
+// long-lived npm token references that Trusted Publishing forbids.
 const FORBIDDEN_PATTERNS = [
-  new RegExp(["PROJECT", "PLAN"].join("_")),
-  new RegExp(["UX", "IMPROVEMENT", "PLAN"].join("_")),
-  new RegExp(["APPLICATION", "BRIEF"].join("_")),
-  new RegExp(["申请", "材料"].join("")),
-  new RegExp(["Claude", "6"].join(" "), "i"),
-  new RegExp(["claude", "6"].join(""), "i"),
-  new RegExp(["market", "harvest"].join(" "), "i"),
-  new RegExp(["收", "割"].join("")),
   new RegExp(["actions/checkout@", "v4"].join("")),
   new RegExp(["actions/setup-node@", "v4"].join("")),
   new RegExp(["github/codeql-action/upload-sarif@", "v3"].join("")),

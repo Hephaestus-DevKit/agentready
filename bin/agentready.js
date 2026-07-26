@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 
 import { runCli } from "../src/cli.js";
+import { AgentReadyError } from "../src/errors.js";
 
 runCli(process.argv.slice(2)).catch((error) => {
-  // For known AgentReadyErrors, only print the message (no stack noise).
-  // For unexpected errors (exit code 4), print the full stack to aid debugging.
-  if (error?.exitCode && error.exitCode !== 4) {
+  // Known AgentReadyErrors carry a curated, actionable message regardless of
+  // exit code, so print just that; only truly unexpected errors get the full
+  // stack to aid debugging.
+  if (error instanceof AgentReadyError) {
     console.error(error.message);
   } else {
     console.error(error?.stack || error?.message || String(error));

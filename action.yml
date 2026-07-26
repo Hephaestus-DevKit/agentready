@@ -8,9 +8,12 @@ inputs:
     required: false
     default: "."
   fail-on:
-    description: Lowest severity that fails CI. Use high, medium, low, info, or none.
+    description: >-
+      Lowest severity that fails CI. Use high, medium, low, info, or none.
+      When empty, the failOn value from the project's AgentReady configuration
+      applies (default medium).
     required: false
-    default: "medium"
+    default: ""
   format:
     description: Output format. Use text, json, markdown, or sarif.
     required: false
@@ -68,8 +71,12 @@ runs:
       run: |
         set -euo pipefail
 
-        args=(scan "$AGENTREADY_INPUT_PATH" --ci --fail-on "$AGENTREADY_INPUT_FAIL_ON" --format "$AGENTREADY_INPUT_FORMAT")
+        args=(scan "$AGENTREADY_INPUT_PATH" --ci --format "$AGENTREADY_INPUT_FORMAT")
         upload_sarif=false
+
+        if [ -n "$AGENTREADY_INPUT_FAIL_ON" ]; then
+          args+=(--fail-on "$AGENTREADY_INPUT_FAIL_ON")
+        fi
 
         if [ "$AGENTREADY_INPUT_UPLOAD_SARIF" = "true" ] || [ "$AGENTREADY_INPUT_UPLOAD_SARIF" = "1" ]; then
           upload_sarif=true

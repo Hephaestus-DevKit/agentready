@@ -1,5 +1,5 @@
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
-import os from "node:os";
+import { readFile, writeFile } from "node:fs/promises";
+import { makeTempDir, repoPath, writeLifecyclePackage } from "./helpers.js";
 import path from "node:path";
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -8,8 +8,8 @@ import { scanProject } from "../src/scanner.js";
 import { writeBaseline } from "../src/baseline.js";
 
 test("scan result schema matches current JSON contract", async () => {
-  const schema = JSON.parse(await readFile(path.resolve("schema", "agentready-result.schema.json"), "utf8"));
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-schema-"));
+  const schema = JSON.parse(await readFile(repoPath("schema", "agentready-result.schema.json"), "utf8"));
+  const root = await makeTempDir("agentready-schema-");
   const result = JSON.parse(formatJson(await scanProject(root)));
 
   assert.equal(schema.properties.schemaVersion.const, result.schemaVersion);
@@ -17,17 +17,9 @@ test("scan result schema matches current JSON contract", async () => {
 });
 
 test("baseline schema matches current baseline contract", async () => {
-  const schema = JSON.parse(await readFile(path.resolve("schema", "agentready-baseline.schema.json"), "utf8"));
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-schema-"));
-  await writeFile(
-    path.join(root, "package.json"),
-    JSON.stringify({
-      scripts: {
-        postinstall: "node setup.js"
-      }
-    }),
-    "utf8"
-  );
+  const schema = JSON.parse(await readFile(repoPath("schema", "agentready-baseline.schema.json"), "utf8"));
+  const root = await makeTempDir("agentready-schema-");
+  await writeLifecyclePackage(root);
 
   const scan = await scanProject(root);
   const baselinePath = path.join(root, ".agentready-baseline.json");

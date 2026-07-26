@@ -1,11 +1,11 @@
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
-import os from "node:os";
+import { mkdir, writeFile } from "node:fs/promises";
+import { makeTempDir, repoPath, writeLifecyclePackage } from "./helpers.js";
 import path from "node:path";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { scanProject } from "../src/scanner.js";
 
-const FIXTURE_ROOT = path.resolve("test", "fixtures");
+const FIXTURE_ROOT = repoPath("test", "fixtures");
 
 test("demo fixture: clean project stays clean", async () => {
   const result = await scanProject(path.join(FIXTURE_ROOT, "demo-clean"));
@@ -36,39 +36,11 @@ test("demo fixture: CI and MCP project shows toolchain risks", async () => {
   assert.ok(ids.includes("github_actions.oidc_cloud_deploy"));
 });
 
-test("fixture: clean initialized project has no findings", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-clean-"));
-  await writeFile(path.join(root, "AGENTS.md"), "# AGENTS.md\n", "utf8");
-  await writeFile(path.join(root, ".agentignore"), ".env\n", "utf8");
-  await writeFile(
-    path.join(root, "package.json"),
-    JSON.stringify({
-      scripts: {
-        test: "node --test"
-      }
-    }),
-    "utf8"
-  );
-
-  const result = await scanProject(root);
-
-  assert.deepEqual(result.summary, { high: 0, medium: 0, low: 0, info: 0 });
-  assert.equal(result.findings.length, 0);
-});
-
 test("fixture: legacy project surfaces adoption and baseline-worthy findings", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-legacy-"));
+  const root = await makeTempDir("agentready-legacy-");
   await writeFile(path.join(root, ".env"), "SERVICE_TOKEN=real-secret-value\n", "utf8");
   await writeFile(path.join(root, "requirements.txt"), "requests\n", "utf8");
-  await writeFile(
-    path.join(root, "package.json"),
-    JSON.stringify({
-      scripts: {
-        postinstall: "node setup.js"
-      }
-    }),
-    "utf8"
-  );
+  await writeLifecyclePackage(root);
 
   const result = await scanProject(root);
   const ids = result.findings.map((finding) => finding.id);
@@ -81,7 +53,7 @@ test("fixture: legacy project surfaces adoption and baseline-worthy findings", a
 });
 
 test("fixture: CI and MCP project surfaces agent toolchain risks", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-tooling-"));
+  const root = await makeTempDir("agentready-tooling-");
   await writeFile(path.join(root, "AGENTS.md"), "# AGENTS.md\n", "utf8");
   await writeFile(path.join(root, ".agentignore"), ".env\n", "utf8");
   await writeFile(

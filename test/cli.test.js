@@ -1,26 +1,18 @@
 import { existsSync } from "node:fs";
-import { readFile, mkdtemp, writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import os from "node:os";
 import path from "node:path";
+import { makeLifecycleProject, makeTempDir, repoPath, writeLifecyclePackage } from "./helpers.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
 const execFileAsync = promisify(execFile);
-const CLI_PATH = path.resolve("bin/agentready.js");
+const CLI_PATH = repoPath("bin", "agentready.js");
 
 test("CLI CI mode fails on configured threshold and respects CLI ignores", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
-  await writeFile(
-    path.join(root, "package.json"),
-    JSON.stringify({
-      scripts: {
-        postinstall: "node setup.js"
-      }
-    }),
-    "utf8"
-  );
+  const root = await makeLifecycleProject();
 
   await assert.rejects(
     execFileAsync(process.execPath, [CLI_PATH, "scan", root, "--ci"], {
@@ -40,16 +32,7 @@ test("CLI CI mode fails on configured threshold and respects CLI ignores", async
 });
 
 test("CLI fail-on high allows medium findings", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
-  await writeFile(
-    path.join(root, "package.json"),
-    JSON.stringify({
-      scripts: {
-        postinstall: "node setup.js"
-      }
-    }),
-    "utf8"
-  );
+  const root = await makeLifecycleProject();
 
   const result = await execFileAsync(
     process.execPath,
@@ -63,7 +46,7 @@ test("CLI fail-on high allows medium findings", async () => {
 });
 
 test("CLI rejects unknown ignored rule ids", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
 
   await assert.rejects(
     execFileAsync(process.execPath, [CLI_PATH, "scan", root, "--ignore-rule", "missing.rule"], {
@@ -78,7 +61,7 @@ test("CLI rejects unknown ignored rule ids", async () => {
 });
 
 test("CLI rejects missing option values", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
 
   await assert.rejects(
     execFileAsync(process.execPath, [CLI_PATH, "scan", root, "--fail-on"], {
@@ -92,23 +75,8 @@ test("CLI rejects missing option values", async () => {
   );
 });
 
-test("CLI rejects invalid fail threshold with usage exit code", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
-
-  await assert.rejects(
-    execFileAsync(process.execPath, [CLI_PATH, "scan", root, "--fail-on", "critical"], {
-      cwd: process.cwd()
-    }),
-    (error) => {
-      assert.equal(error.code, 2);
-      assert.match(error.stderr, /Unsupported fail threshold/);
-      return true;
-    }
-  );
-});
-
 test("CLI rejects invalid scan format before reading project config", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   await writeFile(path.join(root, ".agentready.json"), "{", "utf8");
 
   await assert.rejects(
@@ -125,7 +93,7 @@ test("CLI rejects invalid scan format before reading project config", async () =
 });
 
 test("CLI rejects invalid fail threshold before reading project config", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   await writeFile(path.join(root, ".agentready.json"), "{", "utf8");
 
   await assert.rejects(
@@ -142,7 +110,7 @@ test("CLI rejects invalid fail threshold before reading project config", async (
 });
 
 test("CLI rejects options that are not supported by a command", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
 
   await assert.rejects(
     execFileAsync(process.execPath, [CLI_PATH, "init", root, "--format", "json"], {
@@ -157,17 +125,9 @@ test("CLI rejects options that are not supported by a command", async () => {
 });
 
 test("CLI baseline command writes a baseline usable by scan", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   const baselinePath = path.join(root, ".agentready-baseline.json");
-  await writeFile(
-    path.join(root, "package.json"),
-    JSON.stringify({
-      scripts: {
-        postinstall: "node setup.js"
-      }
-    }),
-    "utf8"
-  );
+  await writeLifecyclePackage(root);
 
   await execFileAsync(process.execPath, [CLI_PATH, "baseline", root, "--output", baselinePath], {
     cwd: process.cwd()
@@ -188,17 +148,9 @@ test("CLI baseline command writes a baseline usable by scan", async () => {
 });
 
 test("CLI baseline diff and prune manage stale baseline debt", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   const baselinePath = path.join(root, ".agentready-baseline.json");
-  await writeFile(
-    path.join(root, "package.json"),
-    JSON.stringify({
-      scripts: {
-        postinstall: "node setup.js"
-      }
-    }),
-    "utf8"
-  );
+  await writeLifecyclePackage(root);
 
   await execFileAsync(process.execPath, [CLI_PATH, "baseline", root, "--output", baselinePath], {
     cwd: process.cwd()
@@ -239,17 +191,9 @@ test("CLI baseline diff and prune manage stale baseline debt", async () => {
 });
 
 test("CLI debt command reports reviewed baseline debt", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   const baselinePath = path.join(root, ".agentready-baseline.json");
-  await writeFile(
-    path.join(root, "package.json"),
-    JSON.stringify({
-      scripts: {
-        postinstall: "node setup.js"
-      }
-    }),
-    "utf8"
-  );
+  await writeLifecyclePackage(root);
 
   await execFileAsync(process.execPath, [CLI_PATH, "baseline", root, "--output", baselinePath], {
     cwd: process.cwd()
@@ -271,17 +215,9 @@ test("CLI debt command reports reviewed baseline debt", async () => {
 });
 
 test("CLI doctor respects baseline suppression", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   const baselinePath = path.join(root, ".agentready-baseline.json");
-  await writeFile(
-    path.join(root, "package.json"),
-    JSON.stringify({
-      scripts: {
-        postinstall: "node setup.js"
-      }
-    }),
-    "utf8"
-  );
+  await writeLifecyclePackage(root);
 
   await execFileAsync(process.execPath, [CLI_PATH, "baseline", root, "--output", baselinePath], {
     cwd: process.cwd()
@@ -296,17 +232,9 @@ test("CLI doctor respects baseline suppression", async () => {
 });
 
 test("CLI baseline command creates missing output directories", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   const baselinePath = path.join(root, "reports", "baselines", ".agentready-baseline.json");
-  await writeFile(
-    path.join(root, "package.json"),
-    JSON.stringify({
-      scripts: {
-        postinstall: "node setup.js"
-      }
-    }),
-    "utf8"
-  );
+  await writeLifecyclePackage(root);
 
   await execFileAsync(process.execPath, [CLI_PATH, "baseline", root, "--output", baselinePath], {
     cwd: process.cwd()
@@ -331,7 +259,7 @@ test("CLI reports missing scan target as a clean usage error", async () => {
 });
 
 test("CLI version prints package version", async () => {
-  const pkg = JSON.parse(await readFile(path.resolve("package.json"), "utf8"));
+  const pkg = JSON.parse(await readFile(repoPath("package.json"), "utf8"));
   const result = await execFileAsync(process.execPath, [CLI_PATH, "version"], {
     cwd: process.cwd()
   });
@@ -340,7 +268,7 @@ test("CLI version prints package version", async () => {
 });
 
 test("CLI scan JSON output is parseable and includes schemaVersion", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   const result = await execFileAsync(process.execPath, [CLI_PATH, "scan", root, "--format", "json"], {
     cwd: process.cwd()
   });
@@ -351,7 +279,7 @@ test("CLI scan JSON output is parseable and includes schemaVersion", async () =>
 });
 
 test("CLI scan can cap detailed findings without changing summary counts", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   await writeFile(
     path.join(root, "package.json"),
     JSON.stringify({
@@ -379,7 +307,7 @@ test("CLI scan can cap detailed findings without changing summary counts", async
 });
 
 test("CLI scan can cap scanned file size", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   await writeFile(path.join(root, "large.js"), "console.log('too large');\n", "utf8");
 
   const result = await execFileAsync(
@@ -396,16 +324,7 @@ test("CLI scan can cap scanned file size", async () => {
 });
 
 test("CLI scan supports summary-only and category grouping", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
-  await writeFile(
-    path.join(root, "package.json"),
-    JSON.stringify({
-      scripts: {
-        postinstall: "node setup.js"
-      }
-    }),
-    "utf8"
-  );
+  const root = await makeLifecycleProject();
 
   const summaryOnly = await execFileAsync(
     process.execPath,
@@ -429,7 +348,7 @@ test("CLI scan supports summary-only and category grouping", async () => {
 });
 
 test("CLI scan rejects invalid report control options", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
 
   await assert.rejects(
     execFileAsync(process.execPath, [CLI_PATH, "scan", root, "--max-findings", "many"], {
@@ -466,7 +385,7 @@ test("CLI scan rejects invalid report control options", async () => {
 });
 
 test("CLI scan output creates missing report directories", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   const outputPath = path.join(root, "reports", "agentready", "report.md");
 
   await execFileAsync(process.execPath, [CLI_PATH, "scan", root, "--format", "markdown", "--output", outputPath], {
@@ -518,7 +437,7 @@ test("CLI list-rules rejects invalid category filters", async () => {
 });
 
 test("CLI config validate reports valid configuration", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   await writeFile(path.join(root, ".agentready.json"), JSON.stringify({ failOn: "medium" }), "utf8");
 
   const result = await execFileAsync(process.execPath, [CLI_PATH, "config", "validate", root], {
@@ -529,7 +448,7 @@ test("CLI config validate reports valid configuration", async () => {
 });
 
 test("CLI config validate exits with config code on warnings", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   await writeFile(path.join(root, ".agentready.json"), JSON.stringify({ failon: "high" }), "utf8");
 
   await assert.rejects(
@@ -546,7 +465,7 @@ test("CLI config validate exits with config code on warnings", async () => {
 });
 
 test("CLI init dry-run does not write files and supports CI preview", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   const result = await execFileAsync(
     process.execPath,
     [CLI_PATH, "init", root, "--dry-run", "--preset", "strict", "--with-ci"],
@@ -563,7 +482,7 @@ test("CLI init dry-run does not write files and supports CI preview", async () =
 });
 
 test("CLI init writes precise sensitive path patterns", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
 
   await execFileAsync(process.execPath, [CLI_PATH, "init", root], {
     cwd: process.cwd()
@@ -590,7 +509,7 @@ test("CLI init writes precise sensitive path patterns", async () => {
 });
 
 test("CLI quickstart prints a zero-write setup path", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   const result = await execFileAsync(process.execPath, [CLI_PATH, "quickstart", root], {
     cwd: process.cwd()
   });
@@ -602,4 +521,128 @@ test("CLI quickstart prints a zero-write setup path", async () => {
   // Bare "npx agentready" would resolve to an unrelated registry package.
   assert.doesNotMatch(result.stdout, /npx agentready /);
   assert.equal(existsSync(path.join(root, "AGENTS.md")), false);
+});
+
+test("CLI badge reports score in all formats and rejects bad ones", async () => {
+  const root = await makeLifecycleProject();
+
+  const text = await execFileAsync(process.execPath, [CLI_PATH, "badge", root], {
+    cwd: process.cwd()
+  });
+  assert.match(text.stdout, /Agent Readiness Score: 95\/100 \(ready\)/);
+  assert.match(text.stdout, /img\.shields\.io\/badge\/AgentReady-Score_95-brightgreen/);
+
+  const json = await execFileAsync(process.execPath, [CLI_PATH, "badge", root, "--format", "json"], {
+    cwd: process.cwd()
+  });
+  const parsed = JSON.parse(json.stdout);
+  assert.equal(parsed.score, 95);
+  assert.equal(parsed.grade, "ready");
+  assert.equal(parsed.deductions.medium, 4);
+  assert.match(parsed.badgeMarkdown, /^!\[AgentReady Score: 95\]/);
+
+  await assert.rejects(
+    execFileAsync(process.execPath, [CLI_PATH, "badge", root, "--format", "svg"], {
+      cwd: process.cwd()
+    }),
+    (error) => {
+      assert.equal(error.code, 2);
+      assert.match(error.stderr, /Unsupported badge format/);
+      return true;
+    }
+  );
+});
+
+test("CLI badge respects a committed baseline like scan does", async () => {
+  const root = await makeLifecycleProject();
+  const baselinePath = path.join(root, ".agentready-baseline.json");
+
+  await execFileAsync(process.execPath, [CLI_PATH, "baseline", root, "--output", baselinePath], {
+    cwd: process.cwd()
+  });
+
+  const badge = await execFileAsync(
+    process.execPath,
+    [CLI_PATH, "badge", root, "--format", "json", "--baseline", baselinePath],
+    { cwd: process.cwd() }
+  );
+  assert.equal(JSON.parse(badge.stdout).score, 100);
+});
+
+test("CLI reports broken project config as a clean config error", async () => {
+  const root = await makeTempDir();
+  await writeFile(path.join(root, ".agentready.json"), "{", "utf8");
+
+  await assert.rejects(
+    execFileAsync(process.execPath, [CLI_PATH, "scan", root], { cwd: process.cwd() }),
+    (error) => {
+      assert.equal(error.code, 3);
+      assert.match(error.stderr, /not valid JSON/);
+      assert.doesNotMatch(error.stderr, /at .*cli\.js/);
+      return true;
+    }
+  );
+});
+
+test("CLI reports missing --config file with config exit code", async () => {
+  const root = await makeTempDir();
+
+  await assert.rejects(
+    execFileAsync(
+      process.execPath,
+      [CLI_PATH, "scan", root, "--config", path.join(root, "missing-config.json")],
+      { cwd: process.cwd() }
+    ),
+    (error) => {
+      assert.equal(error.code, 3);
+      assert.match(error.stderr, /Config file not found/);
+      return true;
+    }
+  );
+});
+
+test("CLI reports missing baseline file with config exit code", async () => {
+  const root = await makeTempDir();
+
+  await assert.rejects(
+    execFileAsync(process.execPath, [CLI_PATH, "baseline", "diff", root], { cwd: process.cwd() }),
+    (error) => {
+      assert.equal(error.code, 3);
+      assert.match(error.stderr, /Baseline file not found/);
+      return true;
+    }
+  );
+});
+
+test("CLI accepts --option=value syntax", async () => {
+  const root = await makeTempDir();
+
+  const result = await execFileAsync(
+    process.execPath,
+    [CLI_PATH, "scan", root, "--format=json", "--max-findings=1"],
+    { cwd: process.cwd() }
+  );
+  const parsed = JSON.parse(result.stdout);
+  assert.equal(parsed.schemaVersion, "1");
+  assert.equal(parsed.report.maxFindings, 1);
+});
+
+test("CLI rejects unknown options and commands with usage errors", async () => {
+  await assert.rejects(
+    execFileAsync(process.execPath, [CLI_PATH, "scan", ".", "--nope"], { cwd: process.cwd() }),
+    (error) => {
+      assert.equal(error.code, 2);
+      assert.match(error.stderr, /Unknown option: --nope/);
+      return true;
+    }
+  );
+
+  await assert.rejects(
+    execFileAsync(process.execPath, [CLI_PATH, "frobnicate"], { cwd: process.cwd() }),
+    (error) => {
+      assert.equal(error.code, 2);
+      assert.match(error.stderr, /Unknown command: frobnicate/);
+      return true;
+    }
+  );
 });

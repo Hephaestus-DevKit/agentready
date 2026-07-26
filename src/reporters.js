@@ -2,11 +2,10 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { SEVERITIES } from "./constants.js";
 import { RULE_CATALOG, RULE_DOCS_URL } from "./rules.js";
-import { toRelative as utilToRelative, sortFindings, escapeMarkdown } from "./utils.js";
+import { sortFindings, escapeMarkdown } from "./utils.js";
 import { TOOL_VERSION } from "./version.js";
 
 const TOOL_INFORMATION_URI = "https://github.com/Hephaestus-DevKit/agentready";
-const RULE_HELP_URI = RULE_DOCS_URL;
 // ANSI palette for TTY text reports. Callers opt in via formatText's
 // `color` option; markdown/JSON/SARIF output is never colorized.
 const ANSI_COLORS = {
@@ -42,8 +41,7 @@ const SKIP_REASON_LABELS = {
 };
 
 export function formatJson(result) {
-  const enriched = result.nextSteps ? result : { ...result, nextSteps: nextSteps(result) };
-  return `${JSON.stringify(enriched, null, 2)}\n`;
+  return `${JSON.stringify({ ...result, nextSteps: nextSteps(result) }, null, 2)}\n`;
 }
 
 export function formatSarif(result) {
@@ -134,11 +132,7 @@ export function formatMarkdown(result, options = {}) {
   }
   lines.push("");
 
-  if (groupBy === "category") {
-    appendMarkdownFindingsByCategory(lines, result.findings);
-  } else {
-    appendMarkdownFindingsBySeverity(lines, result.findings);
-  }
+  appendMarkdownFindings(lines, result.findings, groupBy);
 
   if (result.report?.omittedFindings > 0) {
     lines.push(`_${result.report.omittedFindings} finding(s) hidden by the current report limit._`, "");
@@ -183,12 +177,7 @@ export function formatText(result, options = {}) {
   }
   lines.push("");
 
-  const findingOptions = { ...options, paint };
-  if ((options.groupBy || result.report?.groupBy) === "category") {
-    appendTextFindingsByCategory(lines, result.findings, findingOptions);
-  } else {
-    appendTextFindingsBySeverity(lines, result.findings, findingOptions);
-  }
+  appendTextFindings(lines, result.findings, options.groupBy || result.report?.groupBy, { ...options, paint });
 
   if (result.report?.omittedFindings > 0) {
     lines.push(`${result.report.omittedFindings} finding(s) hidden by the current report limit.`, "");
@@ -203,44 +192,24 @@ export function formatBaselineDiff(diff, format = "text") {
     return `${JSON.stringify(diff, null, 2)}\n`;
   }
 
-  if (format === "markdown") {
-    const lines = [
-      "# AgentReady Baseline Diff",
-      "",
-      "## Summary",
-      "",
-      `- Baseline file: \`${diff.baselinePath}\``,
-      `- Baseline entries: ${diff.summary.baseline}`,
-      `- Current findings: ${diff.summary.current}`,
-      `- Matched: ${diff.summary.matched}`,
-      `- New: ${diff.summary.new}`,
-      `- Stale: ${diff.summary.stale}`,
-      diff.summary.severity ? `- New severity: ${formatSeveritySummary(diff.summary.severity.new)}` : null,
-      diff.summary.severity ? `- Stale severity: ${formatSeveritySummary(diff.summary.severity.stale)}` : null,
-      ""
-    ].filter((line) => line !== null);
-
-    appendBaselineDiffSection(lines, "New Findings", diff.newFindings, true);
-    appendBaselineDiffSection(lines, "Stale Baseline Entries", diff.staleFindings, true);
-    return `${lines.join("\n")}\n`;
+  const markdown = format === "markdown";
+  const rows = [
+    ["Baseline file", diff.baselinePath, true],
+    ["Baseline entries", diff.summary.baseline],
+    ["Current findings", diff.summary.current],
+    ["Matched", diff.summary.matched],
+    ["New", diff.summary.new],
+    ["Stale", diff.summary.stale]
+  ];
+  if (diff.summary.severity) {
+    rows.push(["New severity", formatSeveritySummary(diff.summary.severity.new)]);
+    rows.push(["Stale severity", formatSeveritySummary(diff.summary.severity.stale)]);
   }
 
-  const lines = [
-    "AgentReady Baseline Diff",
-    `Baseline file: ${diff.baselinePath}`,
-    `Baseline entries: ${diff.summary.baseline}`,
-    `Current findings: ${diff.summary.current}`,
-    `Matched: ${diff.summary.matched}`,
-    `New: ${diff.summary.new}`,
-    `Stale: ${diff.summary.stale}`,
-    diff.summary.severity ? `New severity: ${formatSeveritySummary(diff.summary.severity.new)}` : null,
-    diff.summary.severity ? `Stale severity: ${formatSeveritySummary(diff.summary.severity.stale)}` : null,
-    ""
-  ].filter((line) => line !== null);
-
-  appendBaselineDiffSection(lines, "New findings", diff.newFindings, false);
-  appendBaselineDiffSection(lines, "Stale baseline entries", diff.staleFindings, false);
-  return lines.join("\n").trimEnd();
+  const lines = reportHeader("AgentReady Baseline Diff", rows, markdown);
+  appendBaselineDiffSection(lines, markdown ? "New Findings" : "New findings", diff.newFindings, markdown);
+  appendBaselineDiffSection(lines, markdown ? "Stale Baseline Entries" : "Stale baseline entries", diff.staleFindings, markdown);
+  return markdown ? `${lines.join("\n")}\n` : lines.join("\n").trimEnd();
 }
 
 export function formatBaselineDebt(debt, format = "text") {
@@ -248,40 +217,41 @@ export function formatBaselineDebt(debt, format = "text") {
     return `${JSON.stringify(debt, null, 2)}\n`;
   }
 
-  if (format === "markdown") {
-    const lines = [
-      "# AgentReady Baseline Debt",
+  const markdown = format === "markdown";
+  const rows = [
+    ["Baseline file", debt.baselinePath, true],
+    ["Entries", debt.entries],
+    ["Severity", formatSeveritySummary(debt.severity)],
+    ["Oldest age", formatAge(debt.oldestAgeDays)],
+    ["Average age", formatAge(debt.averageAgeDays)]
+  ];
+
+  const lines = reportHeader("AgentReady Baseline Debt", rows, markdown);
+  appendDebtCounts(lines, "Rules", debt.byRule, markdown);
+  appendDebtCounts(lines, "Files", debt.byFile, markdown);
+  appendDebtFindings(lines, debt.findings, markdown);
+  return markdown ? `${lines.join("\n")}\n` : lines.join("\n").trimEnd();
+}
+
+// Shared title + summary-row header for the diff/debt reports. Each row is
+// [label, value, code?]; `code` marks values markdown wraps in backticks.
+function reportHeader(title, rows, markdown) {
+  if (markdown) {
+    return [
+      `# ${title}`,
       "",
       "## Summary",
       "",
-      `- Baseline file: \`${debt.baselinePath}\``,
-      `- Entries: ${debt.entries}`,
-      `- Severity: ${formatSeveritySummary(debt.severity)}`,
-      `- Oldest age: ${formatAge(debt.oldestAgeDays)}`,
-      `- Average age: ${formatAge(debt.averageAgeDays)}`,
+      ...rows.map(([label, value, code]) => `- ${label}: ${code ? `\`${value}\`` : value}`),
       ""
     ];
-
-    appendDebtCounts(lines, "Rules", debt.byRule, true);
-    appendDebtCounts(lines, "Files", debt.byFile, true);
-    appendDebtFindings(lines, debt.findings, true);
-    return `${lines.join("\n")}\n`;
   }
 
-  const lines = [
-    "AgentReady Baseline Debt",
-    `Baseline file: ${debt.baselinePath}`,
-    `Entries: ${debt.entries}`,
-    `Severity: ${formatSeveritySummary(debt.severity)}`,
-    `Oldest age: ${formatAge(debt.oldestAgeDays)}`,
-    `Average age: ${formatAge(debt.averageAgeDays)}`,
+  return [
+    title,
+    ...rows.map(([label, value]) => `${label}: ${value}`),
     ""
   ];
-
-  appendDebtCounts(lines, "Rules", debt.byRule, false);
-  appendDebtCounts(lines, "Files", debt.byFile, false);
-  appendDebtFindings(lines, debt.findings, false);
-  return lines.join("\n").trimEnd();
 }
 
 function appendConfigWarnings(lines, result, markdown) {
@@ -304,27 +274,27 @@ function appendNextSteps(lines, result, markdown) {
   }
 }
 
-function appendMarkdownFindingsBySeverity(lines, findings) {
-  lines.push("## Findings", "");
-  for (const severity of SEVERITIES) {
-    const group = findings.filter((finding) => finding.severity === severity);
-    if (group.length === 0) {
-      continue;
-    }
-
-    lines.push(`### ${severity.toUpperCase()}`, "");
-    for (const finding of group) {
-      appendMarkdownFinding(lines, finding);
-    }
+// Group findings for report rendering: by severity in fixed SEVERITIES order,
+// or by category name with severity-sorted findings inside each group.
+function groupFindings(findings, groupBy) {
+  if (groupBy === "category") {
+    return categoriesFor(findings).map((category) => ({
+      key: category,
+      findings: sortFindings(findings.filter((finding) => (finding.category || "general") === category))
+    }));
   }
+
+  return SEVERITIES
+    .map((severity) => ({ key: severity, findings: findings.filter((finding) => finding.severity === severity) }))
+    .filter((group) => group.findings.length > 0);
 }
 
-function appendMarkdownFindingsByCategory(lines, findings) {
-  lines.push("## Findings By Category", "");
-  for (const category of categoriesFor(findings)) {
-    const group = sortFindings(findings.filter((finding) => (finding.category || "general") === category));
-    lines.push(`### ${category}`, "");
-    for (const finding of group) {
+function appendMarkdownFindings(lines, findings, groupBy) {
+  const byCategory = groupBy === "category";
+  lines.push(byCategory ? "## Findings By Category" : "## Findings", "");
+  for (const group of groupFindings(findings, groupBy)) {
+    lines.push(`### ${byCategory ? group.key : group.key.toUpperCase()}`, "");
+    for (const finding of group.findings) {
       appendMarkdownFinding(lines, finding);
     }
   }
@@ -349,27 +319,13 @@ function appendMarkdownFinding(lines, finding) {
   lines.push("");
 }
 
-function appendTextFindingsBySeverity(lines, findings, options) {
+function appendTextFindings(lines, findings, groupBy, options) {
   const paint = options.paint || ((text) => text);
-  for (const severity of SEVERITIES) {
-    const group = findings.filter((finding) => finding.severity === severity);
-    if (group.length === 0) {
-      continue;
-    }
-
-    lines.push(`${paint(severity.toUpperCase(), SEVERITY_COLORS[severity])} (${group.length})`);
-    for (const finding of group) {
-      appendTextFinding(lines, finding, options);
-    }
-    lines.push("");
-  }
-}
-
-function appendTextFindingsByCategory(lines, findings, options) {
-  for (const category of categoriesFor(findings)) {
-    const group = sortFindings(findings.filter((finding) => (finding.category || "general") === category));
-    lines.push(`${category} (${group.length})`);
-    for (const finding of group) {
+  const byCategory = groupBy === "category";
+  for (const group of groupFindings(findings, groupBy)) {
+    const label = byCategory ? group.key : paint(group.key.toUpperCase(), SEVERITY_COLORS[group.key]);
+    lines.push(`${label} (${group.findings.length})`);
+    for (const finding of group.findings) {
       appendTextFinding(lines, finding, options);
     }
     lines.push("");
@@ -457,16 +413,12 @@ function categoriesFor(findings) {
   return [...new Set(findings.map((finding) => finding.category || "general"))].sort();
 }
 
-// sortFindings is imported from utils.js
-
 function formatLocation(finding) {
   if (!finding.file) {
     return "(project)";
   }
   return finding.line ? `${finding.file}:${finding.line}` : finding.file;
 }
-
-// escapeMarkdown is imported from utils.js
 
 function formatConfigPath(config = {}) {
   return config.configPath || "(defaults)";
@@ -517,9 +469,6 @@ function statusLabel(summary) {
 
   return "ready";
 }
-
-// Re-exported from utils.js for backward compatibility
-export { utilToRelative as toRelative };
 
 function formatDuration(durationMs) {
   if (typeof durationMs !== "number") {
@@ -656,7 +605,7 @@ function toSarifRule(rule) {
     fullDescription: {
       text: rule.recommendation
     },
-    helpUri: RULE_HELP_URI,
+    helpUri: RULE_DOCS_URL,
     help: {
       text: rule.why || rule.recommendation,
       markdown: `${rule.why || rule.recommendation}\n\n${rule.recommendation}`

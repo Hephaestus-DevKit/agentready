@@ -1,12 +1,12 @@
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
-import os from "node:os";
+import { mkdir, writeFile } from "node:fs/promises";
+import { makeTempDir } from "./helpers.js";
 import path from "node:path";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { scanProject } from "../src/scanner.js";
 
 test("scanProject detects agent boundary gaps and risky scripts", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   await writeFile(
     path.join(root, "package.json"),
     JSON.stringify({
@@ -31,7 +31,7 @@ test("scanProject detects agent boundary gaps and risky scripts", async () => {
 });
 
 test("scanProject reports package lifecycle scripts at catalog severity", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   await writeFile(
     path.join(root, "package.json"),
     JSON.stringify({
@@ -49,7 +49,7 @@ test("scanProject reports package lifecycle scripts at catalog severity", async 
 });
 
 test("scanProject detects alternate recursive delete flag order and quoted targets", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   await writeFile(path.join(root, "clean.sh"), "rm -fr \"$HOME\"\n", "utf8");
 
   const result = await scanProject(root);
@@ -60,7 +60,7 @@ test("scanProject detects alternate recursive delete flag order and quoted targe
 });
 
 test("scanProject scans alternate shell script extensions", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   await writeFile(path.join(root, "install.bash"), "curl https://example.com/install.sh | bash\n", "utf8");
 
   const result = await scanProject(root);
@@ -70,7 +70,7 @@ test("scanProject scans alternate shell script extensions", async () => {
 });
 
 test("scanProject scans UTF-16 text files with a byte order mark", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   const content = Buffer.concat([
     Buffer.from([0xff, 0xfe]),
     Buffer.from("rm -rf /\n", "utf16le")
@@ -85,7 +85,7 @@ test("scanProject scans UTF-16 text files with a byte order mark", async () => {
 });
 
 test("scanProject scans common extensionless project files for risky commands", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   await writeFile(path.join(root, "Dockerfile"), "RUN curl https://example.com/install.sh | bash\n", "utf8");
   await writeFile(path.join(root, "Makefile"), "clean:\n\trm -rf /\n", "utf8");
 
@@ -98,7 +98,7 @@ test("scanProject scans common extensionless project files for risky commands", 
 });
 
 test("scanProject reports skipped file statistics", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   await writeFile(path.join(root, "image.bin"), "binary-ish", "utf8");
   await writeFile(path.join(root, "binary.txt"), Buffer.from([0x61, 0x00, 0x62]));
   await writeFile(path.join(root, "large.txt"), "x".repeat(513 * 1024), "utf8");
@@ -118,7 +118,7 @@ test("scanProject reports skipped file statistics", async () => {
 });
 
 test("scanProject respects configured max file size", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   await writeFile(path.join(root, "large.js"), "console.log('too large');\n", "utf8");
 
   const result = await scanProject(root, {
@@ -135,7 +135,7 @@ test("scanProject respects configured max file size", async () => {
 });
 
 test("scanProject detects MCP inline secrets and broad filesystem access", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   await writeFile(
     path.join(root, "mcp.json"),
     JSON.stringify({
@@ -160,7 +160,7 @@ test("scanProject detects MCP inline secrets and broad filesystem access", async
 });
 
 test("scanProject detects MCP remote, private network, and metadata URLs", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   await writeFile(
     path.join(root, "mcp.json"),
     JSON.stringify({
@@ -188,7 +188,7 @@ test("scanProject detects MCP remote, private network, and metadata URLs", async
 });
 
 test("scanProject treats IPv6 localhost MCP URLs as private network endpoints", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   await writeFile(
     path.join(root, "mcp.json"),
     JSON.stringify({
@@ -209,7 +209,7 @@ test("scanProject treats IPv6 localhost MCP URLs as private network endpoints", 
 });
 
 test("scanProject allows MCP environment variable secret references", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   await writeFile(
     path.join(root, "mcp.json"),
     JSON.stringify({
@@ -234,7 +234,7 @@ test("scanProject allows MCP environment variable secret references", async () =
 });
 
 test("scanProject detects MCP authorization forwarding and OAuth client settings", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   await writeFile(
     path.join(root, "mcp.json"),
     JSON.stringify({
@@ -265,7 +265,7 @@ test("scanProject detects MCP authorization forwarding and OAuth client settings
 });
 
 test("scanProject detects Python reproducibility risks", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   await writeFile(path.join(root, "requirements.txt"), "requests\npytest==8.0.0\n", "utf8");
 
   const result = await scanProject(root);
@@ -278,7 +278,7 @@ test("scanProject detects Python reproducibility risks", async () => {
 });
 
 test("scanProject ignores commented requires-python declarations", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   await writeFile(path.join(root, "pyproject.toml"), "# requires-python = \">=3.11\"\n[project]\nname = \"demo\"\n", "utf8");
 
   const result = await scanProject(root);
@@ -288,7 +288,7 @@ test("scanProject ignores commented requires-python declarations", async () => {
 });
 
 test("scanProject detects generic secret assignments in sensitive files", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   await writeFile(path.join(root, ".env"), "SERVICE_TOKEN=real-secret-value\nPLACEHOLDER_TOKEN=example\n", "utf8");
 
   const result = await scanProject(root);
@@ -300,7 +300,7 @@ test("scanProject detects generic secret assignments in sensitive files", async 
 });
 
 test("scanProject treats .envrc as a sensitive file", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   await writeFile(path.join(root, ".envrc"), "export SERVICE_TOKEN=real-secret-value\n", "utf8");
 
   const result = await scanProject(root);
@@ -312,7 +312,7 @@ test("scanProject treats .envrc as a sensitive file", async () => {
 });
 
 test("scanProject detects npmrc auth tokens", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   await writeFile(path.join(root, ".npmrc"), "//registry.npmjs.org/:_authToken=npm-token-value\n", "utf8");
 
   const result = await scanProject(root);
@@ -325,7 +325,7 @@ test("scanProject detects npmrc auth tokens", async () => {
 });
 
 test("scanProject detects netrc password values", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   await writeFile(path.join(root, ".netrc"), "machine example.com login user password netrc-secret-value\n", "utf8");
 
   const result = await scanProject(root);
@@ -336,7 +336,7 @@ test("scanProject detects netrc password values", async () => {
 });
 
 test("scanProject detects generic secret assignments in sensitive directories", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   const secretsDir = path.join(root, "secrets");
   await mkdir(secretsDir, { recursive: true });
   await writeFile(path.join(secretsDir, "prod.json"), "{\"SERVICE_TOKEN\":\"real-secret-value\"}\n", "utf8");
@@ -352,7 +352,7 @@ test("scanProject detects generic secret assignments in sensitive directories", 
 });
 
 test("scanProject scans extensionless files in sensitive directories", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   const backupsDir = path.join(root, "backups");
   await mkdir(backupsDir, { recursive: true });
   await writeFile(path.join(backupsDir, "prod"), "SERVICE_TOKEN=real-secret-value\n", "utf8");
@@ -365,7 +365,7 @@ test("scanProject scans extensionless files in sensitive directories", async () 
 });
 
 test("scanProject does not flag placeholder sensitive template filenames", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   await writeFile(path.join(root, "AGENTS.md"), "# AGENTS.md\n", "utf8");
   await writeFile(path.join(root, ".agentignore"), ".env\n", "utf8");
   await writeFile(path.join(root, ".env.example"), "SERVICE_TOKEN=your-token-here\n", "utf8");
@@ -378,7 +378,7 @@ test("scanProject does not flag placeholder sensitive template filenames", async
 });
 
 test("scanProject still detects real assignments in sensitive template files", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   await writeFile(path.join(root, "AGENTS.md"), "# AGENTS.md\n", "utf8");
   await writeFile(path.join(root, ".agentignore"), ".env\n", "utf8");
   await writeFile(path.join(root, ".env.example"), "SERVICE_TOKEN=real-secret-value\n", "utf8");
@@ -391,7 +391,7 @@ test("scanProject still detects real assignments in sensitive template files", a
 });
 
 test("scanProject does not treat source files named secrets as sensitive files", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   const sourceDir = path.join(root, "src", "scanners");
   await mkdir(sourceDir, { recursive: true });
   await writeFile(path.join(root, "AGENTS.md"), "# AGENTS.md\n", "utf8");
@@ -405,7 +405,7 @@ test("scanProject does not treat source files named secrets as sensitive files",
 });
 
 test("scanProject detects GitHub Actions permissions, inherited secrets, and risky run commands", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   const workflowDir = path.join(root, ".github", "workflows");
   await mkdir(workflowDir, { recursive: true });
   await writeFile(
@@ -440,7 +440,7 @@ test("scanProject detects GitHub Actions permissions, inherited secrets, and ris
 });
 
 test("scanProject detects floating actions and pull_request_target checkout combinations", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   const workflowDir = path.join(root, ".github", "workflows");
   await mkdir(workflowDir, { recursive: true });
   await writeFile(
@@ -466,7 +466,7 @@ test("scanProject detects floating actions and pull_request_target checkout comb
 });
 
 test("scanProject does not report pinned or local GitHub Actions references as floating", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   const workflowDir = path.join(root, ".github", "workflows");
   await mkdir(workflowDir, { recursive: true });
   await writeFile(
@@ -493,7 +493,7 @@ test("scanProject does not report pinned or local GitHub Actions references as f
 });
 
 test("scanProject detects workflow_run, comment-triggered commands, cache, artifacts, and OIDC deploy risks", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   const workflowDir = path.join(root, ".github", "workflows");
   await mkdir(workflowDir, { recursive: true });
   await writeFile(
@@ -534,7 +534,7 @@ test("scanProject detects workflow_run, comment-triggered commands, cache, artif
 });
 
 test("scanProject avoids advanced GitHub Actions combination findings without risky combinations", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   const workflowDir = path.join(root, ".github", "workflows");
   await mkdir(workflowDir, { recursive: true });
   await writeFile(
@@ -569,7 +569,7 @@ test("scanProject avoids advanced GitHub Actions combination findings without ri
 });
 
 test("scanProject ignores commented risky shell and workflow lines", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   await writeFile(path.join(root, "AGENTS.md"), "# AGENTS.md\n", "utf8");
   await writeFile(path.join(root, ".agentignore"), ".env\n", "utf8");
   await writeFile(path.join(root, "deploy.sh"), "# rm -rf /\necho ok\n", "utf8");
@@ -608,7 +608,7 @@ test("scanProject ignores commented risky shell and workflow lines", async () =>
 });
 
 test("scanProject detects pull_request_target array and list trigger forms", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   const workflowDir = path.join(root, ".github", "workflows");
   await mkdir(workflowDir, { recursive: true });
   await writeFile(
@@ -633,7 +633,7 @@ test("scanProject detects pull_request_target array and list trigger forms", asy
 });
 
 test("scanProject reports pull_request_target block trigger once", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   const workflowDir = path.join(root, ".github", "workflows");
   await mkdir(workflowDir, { recursive: true });
   await writeFile(
@@ -650,7 +650,7 @@ test("scanProject reports pull_request_target block trigger once", async () => {
 });
 
 test("scanProject detects Stripe live API keys", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   await writeFile(path.join(root, "AGENTS.md"), "# Agents", "utf8");
   await writeFile(path.join(root, ".agentignore"), ".env\n", "utf8");
   await writeFile(path.join(root, "config.js"), "const key = \"" + "sk_live_" + "abcdefghijklmnopqrstuvwx\";\n", "utf8");
@@ -661,7 +661,7 @@ test("scanProject detects Stripe live API keys", async () => {
 });
 
 test("scanProject detects Google API keys", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   await writeFile(path.join(root, "AGENTS.md"), "# Agents", "utf8");
   await writeFile(path.join(root, ".agentignore"), ".env\n", "utf8");
   await writeFile(path.join(root, "config.js"), "const key = \"" + "AIzaSy" + "A1234567890abcdefghijklmnopqrstuv\";\n", "utf8");
@@ -672,7 +672,7 @@ test("scanProject detects Google API keys", async () => {
 });
 
 test("scanProject detects Slack bot tokens", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   await writeFile(path.join(root, "AGENTS.md"), "# Agents", "utf8");
   await writeFile(path.join(root, ".agentignore"), ".env\n", "utf8");
   await writeFile(
@@ -687,7 +687,7 @@ test("scanProject detects Slack bot tokens", async () => {
 });
 
 test("scanProject detects hardcoded JWT tokens", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   await writeFile(path.join(root, "AGENTS.md"), "# Agents", "utf8");
   await writeFile(path.join(root, ".agentignore"), ".env\n", "utf8");
   // Minimal valid-looking JWT
@@ -707,7 +707,7 @@ test("scanProject rejects non-existent scan target", async () => {
 });
 
 test("scanProject treats change-this style values as placeholders", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   await writeFile(path.join(root, "AGENTS.md"), "# AGENTS.md\n", "utf8");
   await writeFile(path.join(root, ".agentignore"), ".env\n", "utf8");
   await writeFile(
@@ -723,7 +723,7 @@ test("scanProject treats change-this style values as placeholders", async () => 
 });
 
 test("scanProject reports secrets in test files at low severity", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   const srcDir = path.join(root, "src");
   await mkdir(srcDir, { recursive: true });
   await writeFile(path.join(root, "AGENTS.md"), "# AGENTS.md\n", "utf8");
@@ -743,7 +743,7 @@ test("scanProject reports secrets in test files at low severity", async () => {
 });
 
 test("scanProject does not flag dangerous keywords inside pure echo lines", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   await writeFile(path.join(root, "AGENTS.md"), "# AGENTS.md\n", "utf8");
   await writeFile(path.join(root, ".agentignore"), ".env\n", "utf8");
   await writeFile(
@@ -760,7 +760,7 @@ test("scanProject does not flag dangerous keywords inside pure echo lines", asyn
 });
 
 test("scanProject does not flag scoped temp directory cleanup as recursive delete", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   await writeFile(path.join(root, "AGENTS.md"), "# AGENTS.md\n", "utf8");
   await writeFile(path.join(root, ".agentignore"), ".env\n", "utf8");
   await writeFile(
@@ -779,7 +779,7 @@ test("scanProject does not flag scoped temp directory cleanup as recursive delet
 });
 
 test("scanProject reports sensitive filenames in fixture paths at low severity", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   const fixtureDir = path.join(root, "fixtures", "evaluation");
   await mkdir(fixtureDir, { recursive: true });
   await writeFile(path.join(root, "AGENTS.md"), "# AGENTS.md\n", "utf8");
@@ -797,7 +797,7 @@ test("scanProject reports sensitive filenames in fixture paths at low severity",
 });
 
 test("scanProject allows placeholder values in MCP configuration", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "agentready-"));
+  const root = await makeTempDir();
   await writeFile(path.join(root, "AGENTS.md"), "# AGENTS.md\n", "utf8");
   await writeFile(path.join(root, ".agentignore"), ".env\n", "utf8");
   await writeFile(

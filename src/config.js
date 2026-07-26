@@ -4,11 +4,9 @@ import path from "node:path";
 import { MAX_FILE_BYTES, SEVERITIES } from "./constants.js";
 import { configError, usageError } from "./errors.js";
 import { RULE_CATALOG } from "./rules.js";
-import { escapeRegExp } from "./scanners/utils.js";
+import { escapeRegExp } from "./utils.js";
 
 export const CONFIG_FILE_NAMES = ["agentready.config.json", ".agentready.json"];
-// Re-export as SEVERITY_ORDER for backward compatibility; SEVERITIES from constants is canonical
-export const SEVERITY_ORDER = SEVERITIES;
 export const FAIL_ON_VALUES = [...SEVERITIES, "none"];
 
 export const DEFAULT_CONFIG = {
@@ -106,8 +104,8 @@ export function shouldFail(summary, failOn = DEFAULT_CONFIG.failOn) {
     return false;
   }
 
-  const thresholdIndex = SEVERITY_ORDER.indexOf(failOn);
-  return SEVERITY_ORDER.slice(0, thresholdIndex + 1).some((severity) => summary[severity] > 0);
+  const thresholdIndex = SEVERITIES.indexOf(failOn);
+  return SEVERITIES.slice(0, thresholdIndex + 1).some((severity) => summary[severity] > 0);
 }
 
 export function matchesAnyPath(patterns, relativePath) {
@@ -244,7 +242,7 @@ function normalizeSeverityOverrides(value, warnings) {
 
   const overrides = {};
   for (const [rule, severity] of Object.entries(value)) {
-    if (!SEVERITY_ORDER.includes(severity)) {
+    if (!SEVERITIES.includes(severity)) {
       warnings.push(`Invalid severity override for ${rule} was ignored.`);
       continue;
     }
@@ -315,10 +313,6 @@ function globToRegExp(pattern) {
 
   return new RegExp(`^${source}$`);
 }
-
-// escapeRegExp is imported from scanners/utils.js
-
-
 
 function assertKnownRule(rule, optionName) {
   if (typeof rule !== "string" || !rule.trim()) {

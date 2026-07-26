@@ -43,7 +43,8 @@ Usage:
   agentready config validate [path] [--config file]
   agentready list-rules [--format text|json|markdown] [--category name] [--severity level]
   agentready badge [path] [--format text|json|markdown] [--config file]
-                   [--ignore-rule id] [--ignore-path pattern] [--max-file-size bytes]
+                   [--baseline file] [--ignore-rule id] [--ignore-path pattern]
+                   [--max-file-size bytes]
   agentready version
   agentready help
 
@@ -146,10 +147,7 @@ async function handleScan(args) {
   ]);
   const target = path.resolve(options.positionals[0] || process.cwd());
   const format = options.format || "text";
-
-  if (!["text", "json", "markdown", "sarif"].includes(format)) {
-    throw usageError(`Unsupported format "${format}". Use text, json, markdown, or sarif.`);
-  }
+  ensureFormat(format, ["text", "json", "markdown", "sarif"]);
 
   const reportOptions = normalizeReportOptions(options);
 
@@ -159,8 +157,7 @@ async function handleScan(args) {
 
   const loaded = await loadConfig(target, options.config);
   const config = applyCliOverrides(loaded.config, options);
-  const baselinePath = options.baseline || config.baselinePath;
-  const baseline = await loadBaseline(target, baselinePath);
+  const baseline = await loadBaseline(target, cliBaselinePath(options) || config.baselinePath);
 
   const result = await scanProject(target, {
     config,
@@ -183,9 +180,7 @@ async function handleScan(args) {
             });
 
   if (options.output) {
-    const outputPath = path.resolve(options.output);
-    await mkdir(path.dirname(outputPath), { recursive: true });
-    await writeFile(outputPath, output, "utf8");
+    const outputPath = await writeOutputFile(options.output, output);
     if (!options.quiet) {
       console.log(`Wrote ${format} report to ${outputPath}`);
     }
@@ -251,10 +246,7 @@ async function handleBaselineDiff(args) {
   rejectUnsupportedOptions(options, ["baseline", "config", "ignore-rule", "ignore-path", "max-file-size", "format", "output"]);
   const target = path.resolve(options.positionals[0] || process.cwd());
   const format = options.format || "text";
-
-  if (!["text", "json", "markdown"].includes(format)) {
-    throw usageError(`Unsupported format "${format}". Use text, json, or markdown.`);
-  }
+  ensureFormat(format, ["text", "json", "markdown"]);
 
   const loaded = await loadConfig(target, options.config);
   const config = applyCliOverrides(
@@ -274,9 +266,7 @@ async function handleBaselineDiff(args) {
   const output = formatBaselineDiff(diff, format);
 
   if (options.output) {
-    const outputPath = path.resolve(options.output);
-    await mkdir(path.dirname(outputPath), { recursive: true });
-    await writeFile(outputPath, output, "utf8");
+    const outputPath = await writeOutputFile(options.output, output);
     console.log(`Wrote baseline diff to ${outputPath}`);
     return;
   }
@@ -314,10 +304,7 @@ async function handleDebt(args) {
   rejectUnsupportedOptions(options, ["baseline", "format", "output", "config"]);
   const target = path.resolve(options.positionals[0] || process.cwd());
   const format = options.format || "text";
-
-  if (!["text", "json", "markdown"].includes(format)) {
-    throw usageError(`Unsupported format "${format}". Use text, json, or markdown.`);
-  }
+  ensureFormat(format, ["text", "json", "markdown"]);
 
   const loaded = await loadConfig(target, options.config);
   const baselinePath = resolveBaselinePathOption(target, options, loaded.config);
@@ -325,9 +312,7 @@ async function handleDebt(args) {
   const output = formatBaselineDebt(summarizeBaselineDebt(baseline), format);
 
   if (options.output) {
-    const outputPath = path.resolve(options.output);
-    await mkdir(path.dirname(outputPath), { recursive: true });
-    await writeFile(outputPath, output, "utf8");
+    const outputPath = await writeOutputFile(options.output, output);
     console.log(`Wrote baseline debt report to ${outputPath}`);
     return;
   }
@@ -354,8 +339,7 @@ async function handleDoctor(args) {
   const reportOptions = normalizeReportOptions(options);
   const loaded = await loadConfig(target, options.config);
   const config = applyCliOverrides(loaded.config, options);
-  const baselinePath = options.baseline || config.baselinePath;
-  const baseline = await loadBaseline(target, baselinePath);
+  const baseline = await loadBaseline(target, cliBaselinePath(options) || config.baselinePath);
   const result = await runDoctor(target, {
     config,
     baseline,
@@ -414,10 +398,7 @@ async function handleListRules(args) {
   const options = parseOptions(args);
   rejectUnsupportedOptions(options, ["format", "category", "severity"]);
   const format = options.format || "text";
-
-  if (!["text", "json", "markdown"].includes(format)) {
-    throw usageError(`Unsupported format "${format}". Use text, json, or markdown.`);
-  }
+  ensureFormat(format, ["text", "json", "markdown"]);
 
   if (options.severity && !SEVERITIES.includes(options.severity)) {
     throw usageError(`Unsupported severity "${options.severity}". Use ${SEVERITIES.join(", ")}.`);
@@ -431,35 +412,24 @@ async function handleListRules(args) {
   console.log(formatRules(format, { category: options.category, severity: options.severity }));
 }
 
+// Presence is derived from the option tables below, so a newly added option
+// is automatically rejected everywhere until a command explicitly allows it.
 function rejectUnsupportedOptions(options, allowedNames) {
   const allowed = new Set(allowedNames);
-  const present = [
-    ["format", options.format !== undefined],
-    ["output", options.output !== undefined],
-    ["ci", Boolean(options.ci)],
-    ["config", options.config !== undefined],
-    ["fail-on", options.failOn !== undefined],
-    ["ignore-rule", options.ignoreRules.length > 0],
-    ["ignore-path", options.ignorePaths.length > 0],
-    ["baseline", options.baseline !== undefined],
-    ["max-file-size", options.maxFileSize !== undefined],
-    ["max-findings", options.maxFindings !== undefined],
-    ["summary-only", Boolean(options.summaryOnly)],
-    ["group-by", options.groupBy !== undefined],
-    ["category", options.category !== undefined],
-    ["severity", options.severity !== undefined],
-    ["preset", options.preset !== undefined],
-    ["force", Boolean(options.force)],
-    ["dry-run", Boolean(options.dryRun)],
-    ["with-ci", Boolean(options.withCi)],
-    ["quiet", Boolean(options.quiet)],
-    ["verbose", Boolean(options.verbose)],
-    ["no-color", Boolean(options.noColor)]
-  ];
 
-  for (const [name, isPresent] of present) {
-    if (isPresent && !allowed.has(name)) {
-      throw usageError(`Option --${name} is not supported for this command.`);
+  for (const [flag, spec] of VALUE_OPTIONS) {
+    if (!flag.startsWith("--")) {
+      continue; // short aliases share their long option's name
+    }
+    const isPresent = spec.array ? options[spec.key].length > 0 : options[spec.key] !== undefined;
+    if (isPresent && !allowed.has(flag.slice(2))) {
+      throw usageError(`Option ${flag} is not supported for this command.`);
+    }
+  }
+
+  for (const [flag, key] of BOOLEAN_OPTIONS) {
+    if (options[key] && !allowed.has(flag.slice(2))) {
+      throw usageError(`Option ${flag} is not supported for this command.`);
     }
   }
 }
@@ -603,31 +573,53 @@ function applyReportOptions(result, options) {
 
 
 
+// A --baseline given on the command line is relative to the caller's working
+// directory (like --config and --output); a baselinePath from the config file
+// stays relative to the scan target.
+function cliBaselinePath(options) {
+  return options.baseline === undefined ? null : path.resolve(options.baseline);
+}
+
 function resolveBaselinePathOption(target, options, config) {
-  return options.baseline || config.baselinePath || path.join(target, ".agentready-baseline.json");
+  return cliBaselinePath(options) || config.baselinePath || path.join(target, ".agentready-baseline.json");
+}
+
+function ensureFormat(format, allowedFormats, label = "format") {
+  if (!allowedFormats.includes(format)) {
+    const listed = `${allowedFormats.slice(0, -1).join(", ")}, or ${allowedFormats.at(-1)}`;
+    throw usageError(`Unsupported ${label} "${format}". Use ${listed}.`);
+  }
+}
+
+async function writeOutputFile(output, content) {
+  const outputPath = path.resolve(output);
+  await mkdir(path.dirname(outputPath), { recursive: true });
+  await writeFile(outputPath, content, "utf8");
+  return outputPath;
 }
 
 async function handleBadge(args) {
   const options = parseOptions(args);
-  rejectUnsupportedOptions(options, ["format", "config", "ignore-rule", "ignore-path", "max-file-size"]);
+  rejectUnsupportedOptions(options, ["format", "config", "baseline", "ignore-rule", "ignore-path", "max-file-size"]);
   const target = path.resolve(options.positionals[0] || process.cwd());
   const format = options.format || "text";
-
-  if (!["text", "json", "markdown"].includes(format)) {
-    throw usageError(`Unsupported badge format "${format}". Use text, json, or markdown.`);
-  }
+  ensureFormat(format, ["text", "json", "markdown"], "badge format");
 
   const loaded = await loadConfig(target, options.config);
   const config = applyCliOverrides(loaded.config, options);
+  // Respect the same baseline as scan, so the badge score matches what a
+  // baseline-suppressed scan reports.
+  const baseline = await loadBaseline(target, cliBaselinePath(options) || config.baselinePath);
 
   const result = await scanProject(target, {
     config,
+    baseline,
     configWarnings: loaded.warnings
   });
 
   const { score, grade, color, deductions } = calculateScore(result.findings);
-  const badgeUrl = formatBadgeUrl(score, grade, color);
-  const badgeMarkdown = formatBadgeMarkdown(score, grade, color);
+  const badgeUrl = formatBadgeUrl(score, color);
+  const badgeMarkdown = formatBadgeMarkdown(score, color);
 
   if (format === "json") {
     console.log(JSON.stringify({ score, grade, color, deductions, badgeUrl, badgeMarkdown }, null, 2));

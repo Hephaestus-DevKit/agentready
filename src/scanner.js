@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { open, readdir, readFile, stat } from "node:fs/promises";
+import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { DEFAULT_IGNORED_DIRS, MAX_FILE_BYTES, TEXT_EXTENSIONS, TEXT_FILE_NAMES } from "./constants.js";
 import { DEFAULT_CONFIG, applyFindingConfig, matchesAnyPath } from "./config.js";
@@ -27,31 +27,21 @@ export async function scanProject(root, options = {}) {
   const collected = await collectFiles(root, config);
   const files = collected.files;
   const findings = [];
+  let filesScanned = 0;
 
   findings.push(...scanProjectLevel(root));
 
   const BATCH_SIZE = 32;
   for (let i = 0; i < files.length; i += BATCH_SIZE) {
     const batch = files.slice(i, i + BATCH_SIZE);
-    const results = await Promise.all(batch.map(async (filePath) => {
-      const relativePath = toRelative(root, filePath);
-      const basename = path.basename(filePath);
-      const content = await readTextFile(filePath);
-      if (content === null) {
-        return [];
+    const results = await Promise.all(batch.map((filePath) => scanFile(root, filePath)));
+    for (const result of results) {
+      if (result.status === "scanned") {
+        filesScanned += 1;
+        findings.push(...result.findings);
+      } else {
+        collected.skipped[result.status] += 1;
       }
-      return [
-        ...scanSensitiveFileName(relativePath, basename),
-        ...scanSecretContent(relativePath, basename, content),
-        ...scanDangerousShell(relativePath, content),
-        ...scanPackageJson(relativePath, basename, content),
-        ...scanGitHubActions(relativePath, content),
-        ...scanMcpConfig(relativePath, basename, content),
-        ...scanPythonProjectFiles(relativePath, basename, content)
-      ];
-    }));
-    for (const batchResult of results) {
-      findings.push(...batchResult);
     }
   }
 
@@ -64,7 +54,7 @@ export async function scanProject(root, options = {}) {
     root,
     scannedAt: new Date().toISOString(),
     durationMs: Date.now() - startedAt,
-    filesScanned: files.length,
+    filesScanned,
     filesSkipped: collected.skipped,
     config: {
       configPath: config.configPath || null,
@@ -124,6 +114,7 @@ async function collectFiles(root, config) {
       }
 
       if (!entry.isFile()) {
+        skipped.unsupportedType += 1;
         continue;
       }
 
@@ -139,7 +130,45 @@ async function collectFiles(root, config) {
   }
 
   await walk(root);
+  // Directory subtrees are walked concurrently, so collection order depends on
+  // fs latency; sort to keep findings and reports reproducible across runs.
+  files.sort();
   return { files, skipped };
+}
+
+async function scanFile(root, filePath) {
+  const relativePath = toRelative(root, filePath);
+  const basename = path.basename(filePath);
+
+  let buffer;
+  try {
+    buffer = await readFile(filePath);
+  } catch {
+    return { status: "unreadableFile" };
+  }
+
+  if (isBinaryBuffer(buffer)) {
+    if (isSensitivePath(relativePath, basename)) {
+      // A binary key store (.p12, .pfx, ...) still deserves the filename
+      // finding; only content scanning is meaningless for it.
+      return { status: "scanned", findings: scanSensitiveFileName(relativePath, basename) };
+    }
+    return { status: "binary" };
+  }
+
+  const content = decodeTextBuffer(buffer);
+  return {
+    status: "scanned",
+    findings: [
+      ...scanSensitiveFileName(relativePath, basename),
+      ...scanSecretContent(relativePath, basename, content),
+      ...scanDangerousShell(relativePath, content),
+      ...scanPackageJson(relativePath, basename, content),
+      ...scanGitHubActions(relativePath, content),
+      ...scanMcpConfig(relativePath, basename, content),
+      ...scanPythonProjectFiles(relativePath, basename, content)
+    ]
+  };
 }
 
 async function classifyTextFile(filePath, relativePath, config) {
@@ -165,20 +194,7 @@ async function classifyTextFile(filePath, relativePath, config) {
     return { ok: false, reason: "unsupportedType" };
   }
 
-  if (await isBinaryFile(filePath)) {
-    return { ok: false, reason: "binary" };
-  }
-
   return { ok: true };
-}
-
-async function readTextFile(filePath) {
-  try {
-    const buffer = await readFile(filePath);
-    return decodeTextBuffer(buffer);
-  } catch {
-    return null;
-  }
 }
 
 function decodeTextBuffer(buffer) {
@@ -206,26 +222,17 @@ function decodeUtf16Be(buffer) {
   return swapped.toString("utf16le");
 }
 
-async function isBinaryFile(filePath) {
-  let handle;
-  try {
-    handle = await open(filePath, "r");
-    const buffer = Buffer.alloc(1024);
-    const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
-    if (hasTextByteOrderMark(buffer, bytesRead)) {
-      return false;
-    }
-    for (let index = 0; index < bytesRead; index += 1) {
-      if (buffer[index] === 0) {
-        return true;
-      }
-    }
+function isBinaryBuffer(buffer) {
+  const sniffLength = Math.min(buffer.length, 1024);
+  if (hasTextByteOrderMark(buffer, sniffLength)) {
     return false;
-  } catch {
-    return false;
-  } finally {
-    await handle?.close();
   }
+  for (let index = 0; index < sniffLength; index += 1) {
+    if (buffer[index] === 0) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function hasTextByteOrderMark(buffer, bytesRead) {

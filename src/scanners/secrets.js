@@ -1,9 +1,9 @@
-import { isTestPath, looksLikePlaceholderValue, redact, splitLines } from "./utils.js";
+import { SECRET_TOKEN_RULES, isTestPath, looksLikePlaceholderValue, redact, splitLines } from "./utils.js";
 
 const TEST_CONTEXT_WHY =
   "Secret-shaped value found in a test file or fixture; these are usually deliberate fakes, but verify no real credential was committed.";
 
-export const SENSITIVE_FILE_PATTERNS = [
+const SENSITIVE_FILE_PATTERNS = [
   /^\.env(?:[.-]|rc$|$)/i,
   /^\.npmrc$/i,
   /^\.pypirc$/i,
@@ -13,68 +13,8 @@ export const SENSITIVE_FILE_PATTERNS = [
   /\.(?:pem|key|p12|pfx)$/i
 ];
 
-const SECRET_PATTERNS = [
-  {
-    id: "secret.private_key",
-    pattern: /-----BEGIN (?:RSA |EC |OPENSSH |DSA |PGP )?PRIVATE KEY-----/,
-    title: "Private key material is present",
-    recommendation: "Remove private keys from the repository and rotate any exposed credentials."
-  },
-  {
-    id: "secret.github_token",
-    pattern: /\bgh[pousr]_[A-Za-z0-9_]{30,}\b/,
-    title: "GitHub token-like value is present",
-    recommendation: "Move the token to a secret manager, rotate it, and keep it outside agent-readable files."
-  },
-  {
-    id: "secret.anthropic_key",
-    pattern: /\bsk-ant-[A-Za-z0-9_-]{32,}\b/,
-    title: "Anthropic-style API key is present",
-    recommendation: "Move API keys to environment secrets and add the file to .agentignore and .gitignore."
-  },
-  {
-    id: "secret.openai_key",
-    pattern: /\bsk-(?!ant-)[A-Za-z0-9_-]{32,}\b/,
-    title: "OpenAI-style API key is present",
-    recommendation: "Move API keys to environment secrets and add the file to .agentignore and .gitignore."
-  },
-  {
-    id: "secret.aws_access_key",
-    pattern: /\bAKIA[0-9A-Z]{16}\b/,
-    title: "AWS access key-like value is present",
-    recommendation: "Rotate the key, remove it from the repository, and use scoped secret storage."
-  },
-  {
-    id: "secret.stripe_key",
-    pattern: /\bsk_live_[A-Za-z0-9]{24,}\b/,
-    title: "Stripe live API key is present",
-    recommendation: "Rotate the Stripe key and move it to scoped secret storage."
-  },
-  {
-    id: "secret.google_api_key",
-    pattern: /\bAIzaSy[A-Za-z0-9_-]{33}\b/,
-    title: "Google API key is present",
-    recommendation: "Restrict the API key scope in Google Cloud Console and move it to secret storage."
-  },
-  {
-    id: "secret.slack_token",
-    pattern: /\bxoxb-[0-9]{10,13}-[0-9]{10,13}-[A-Za-z0-9]{20,}\b/,
-    title: "Slack bot token is present",
-    recommendation: "Rotate the Slack token and use scoped secret storage."
-  },
-  {
-    id: "secret.slack_app_token",
-    pattern: /\bxapp-[0-9]-[A-Za-z0-9]+-[0-9]+-[A-Za-z0-9]+\b/,
-    title: "Slack app-level token is present",
-    recommendation: "Rotate the Slack app token and use scoped secret storage."
-  },
-  {
-    id: "secret.jwt_token",
-    pattern: /\beyJ[A-Za-z0-9_-]{20,}\.eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]+\b/,
-    title: "Hardcoded JWT token detected",
-    recommendation: "Remove hardcoded JWT tokens; generate them dynamically at runtime."
-  }
-];
+// Detection metadata (including redaction) lives in SECRET_TOKEN_RULES in
+// ./utils.js so the scanner and redact() can never drift apart.
 
 export function scanSensitiveFileName(relativePath, basename) {
   if (!isSensitivePath(relativePath, basename) || isTemplateSensitiveFileName(basename)) {
@@ -107,17 +47,16 @@ export function scanSecretContent(relativePath, basename, content) {
   // real committed credential is still visible, but at low severity so they
   // do not fail CI at the default medium threshold.
   const inTestContext = isTestPath(relativePath);
-  const severity = inTestContext ? "low" : "high";
 
-  for (const rule of SECRET_PATTERNS) {
+  for (const rule of SECRET_TOKEN_RULES) {
     for (let index = 0; index < lines.length; index += 1) {
-      if (!rule.pattern.test(lines[index])) {
+      if (!rule.detect.test(lines[index])) {
         continue;
       }
 
       findings.push({
         id: rule.id,
-        severity,
+        severity: inTestContext ? "low" : rule.severity || "high",
         title: rule.title,
         file: relativePath,
         line: index + 1,
@@ -130,13 +69,13 @@ export function scanSecretContent(relativePath, basename, content) {
   }
 
   if (isSensitivePath(relativePath, basename)) {
-    findings.push(...scanGenericSecretAssignments(relativePath, lines, severity, inTestContext));
+    findings.push(...scanGenericSecretAssignments(relativePath, basename, lines, inTestContext ? "low" : "high", inTestContext));
   }
 
   return findings;
 }
 
-export function isSensitiveFileName(basename) {
+function isSensitiveFileName(basename) {
   return SENSITIVE_FILE_PATTERNS.some((pattern) => pattern.test(basename));
 }
 
@@ -149,7 +88,7 @@ function isTemplateSensitiveFileName(basename) {
   return /(?:^|[._-])(example|sample|template|dummy)(?:[._-]|$)/i.test(basename);
 }
 
-function scanGenericSecretAssignments(relativePath, lines, severity = "high", inTestContext = false) {
+function scanGenericSecretAssignments(relativePath, basename, lines, severity = "high", inTestContext = false) {
   const findings = [];
 
   for (let index = 0; index < lines.length; index += 1) {
@@ -158,7 +97,7 @@ function scanGenericSecretAssignments(relativePath, lines, severity = "high", in
       continue;
     }
 
-    const match = matchSecretAssignment(line);
+    const match = matchSecretAssignment(line, basename);
     if (!match) {
       continue;
     }
@@ -182,18 +121,25 @@ function scanGenericSecretAssignments(relativePath, lines, severity = "high", in
   return findings;
 }
 
-function matchSecretAssignment(line) {
-  const netrcPassword = line.match(/\b(password)\s+([^\s#]{8,})/i);
-  if (netrcPassword) {
-    return netrcPassword;
+const ASSIGNMENT_PATTERNS = [
+  /^(?:export\s+)?[{,]?\s*["']?([A-Z0-9_-]*(?:API[_-]?KEY|TOKEN|SECRET|PASSWORD|PRIVATE[_-]?KEY)[A-Z0-9_-]*)["']?\s*[:=]\s*["']?([^"',}\s#]{8,})/i,
+  /(?:^|:)([A-Z0-9_-]*(?:API[_-]?KEY|TOKEN|SECRET|PASSWORD|PRIVATE[_-]?KEY)[A-Z0-9_-]*)\s*=\s*["']?([^"'\s#]{8,})/i
+];
+
+// The space-separated `password <value>` form is netrc syntax; in any other
+// file it matches English prose ("password rotation policy is ..."), so gate
+// it to actual netrc files.
+const NETRC_FILE_NAMES = new Set([".netrc", "_netrc", "netrc"]);
+
+function matchSecretAssignment(line, basename) {
+  if (NETRC_FILE_NAMES.has(String(basename).toLowerCase())) {
+    const netrcPassword = line.match(/\b(password)\s+([^\s#]{8,})/i);
+    if (netrcPassword) {
+      return netrcPassword;
+    }
   }
 
-  const patterns = [
-    /^(?:export\s+)?[{,]?\s*["']?([A-Z0-9_-]*(?:API[_-]?KEY|TOKEN|SECRET|PASSWORD|PRIVATE[_-]?KEY)[A-Z0-9_-]*)["']?\s*[:=]\s*["']?([^"',}\s#]{8,})/i,
-    /(?:^|:)([A-Z0-9_-]*(?:API[_-]?KEY|TOKEN|SECRET|PASSWORD|PRIVATE[_-]?KEY)[A-Z0-9_-]*)\s*=\s*["']?([^"'\s#]{8,})/i
-  ];
-
-  for (const pattern of patterns) {
+  for (const pattern of ASSIGNMENT_PATTERNS) {
     const match = line.match(pattern);
     if (match) {
       return match;

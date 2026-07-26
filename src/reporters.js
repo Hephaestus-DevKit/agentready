@@ -1,11 +1,12 @@
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { SEVERITIES } from "./constants.js";
-import { RULE_CATALOG } from "./rules.js";
+import { RULE_CATALOG, RULE_DOCS_URL } from "./rules.js";
 import { toRelative as utilToRelative, sortFindings, escapeMarkdown } from "./utils.js";
+import { TOOL_VERSION } from "./version.js";
 
 const TOOL_INFORMATION_URI = "https://github.com/Hephaestus-DevKit/agentready";
-const RULE_HELP_URI = `${TOOL_INFORMATION_URI}/blob/main/docs/RULES.md`;
+const RULE_HELP_URI = RULE_DOCS_URL;
 const SKIP_REASON_LABELS = {
   ignoredPath: "ignored-path",
   ignoredDirectory: "ignored-directory",
@@ -46,8 +47,8 @@ export function formatSarif(result) {
           driver: {
             name: "AgentReady",
             fullName: "AgentReady preflight security scanner",
-            version: result.toolVersion || "0.1.0",
-            semanticVersion: result.toolVersion || "0.1.0",
+            version: result.toolVersion || TOOL_VERSION,
+            semanticVersion: result.toolVersion || TOOL_VERSION,
             informationUri: TOOL_INFORMATION_URI,
             rules: [...rules.values()]
           }
@@ -81,22 +82,13 @@ export function formatMarkdown(result, options = {}) {
     "",
     "## Summary",
     "",
-    `- Root: \`${result.root}\``,
-    `- Generated: ${result.scannedAt}`,
-    `- Duration: ${formatDuration(result.durationMs)}`,
-    `- Files scanned: ${result.filesScanned}`,
-    totalSkipped(result.filesSkipped) > 0 ? `- Files skipped: ${formatSkippedFiles(result.filesSkipped)}` : null,
-    `- Status: ${statusLabel(result.summary)}`,
-    `- Config: \`${formatConfigPath(result.config)}\``,
-    `- CI fail threshold: ${result.config?.failOn || "medium"}`,
-    result.report ? `- Findings displayed: ${result.report.displayedFindings} of ${result.report.totalFindings}` : null,
-    result.baseline?.path ? `- Baseline suppressed: ${result.baseline.suppressed} of ${result.baseline.entries}` : null,
+    ...summaryMetaRows(result).map(([label, value, code]) => `- ${label}: ${code ? `\`${value}\`` : value}`),
     "",
     "| Severity | Count |",
     "| --- | ---: |",
     ...SEVERITIES.map((severity) => `| ${severity} | ${result.summary[severity]} |`),
     ""
-  ].filter((line) => line !== null);
+  ];
 
   appendConfigWarnings(lines, result, true);
 
@@ -139,19 +131,10 @@ export function formatText(result, options = {}) {
 
   const lines = [
     "AgentReady Report",
-    `Root: ${result.root}`,
-    `Generated: ${result.scannedAt}`,
-    `Duration: ${formatDuration(result.durationMs)}`,
-    `Files scanned: ${result.filesScanned}`,
-    totalSkipped(result.filesSkipped) > 0 ? `Files skipped: ${formatSkippedFiles(result.filesSkipped)}` : null,
-    `Status: ${statusLabel(result.summary)}`,
-    `Config: ${formatConfigPath(result.config)}`,
-    `CI fail threshold: ${result.config?.failOn || "medium"}`,
-    result.report ? `Findings displayed: ${result.report.displayedFindings} of ${result.report.totalFindings}` : null,
-    result.baseline?.path ? `Baseline suppressed: ${result.baseline.suppressed} of ${result.baseline.entries}` : null,
+    ...summaryMetaRows(result).map(([label, value]) => `${label}: ${value}`),
     `Summary: high=${result.summary.high} medium=${result.summary.medium} low=${result.summary.low} info=${result.summary.info}`,
     ""
-  ].filter((line) => line !== null);
+  ];
 
   appendConfigWarnings(lines, result, false);
 
@@ -460,6 +443,36 @@ function formatConfigPath(config = {}) {
   return config.configPath || "(defaults)";
 }
 
+// Ordered summary rows shared by the text and markdown reports. Each row is
+// [label, value, code?]; `code` marks values that markdown wraps in backticks
+// (text ignores it). Conditional rows are only included when relevant.
+function summaryMetaRows(result) {
+  const rows = [
+    ["Root", result.root, true],
+    ["Generated", result.scannedAt],
+    ["Duration", formatDuration(result.durationMs)],
+    ["Files scanned", result.filesScanned]
+  ];
+
+  if (totalSkipped(result.filesSkipped) > 0) {
+    rows.push(["Files skipped", formatSkippedFiles(result.filesSkipped)]);
+  }
+
+  rows.push(["Status", statusLabel(result.summary)]);
+  rows.push(["Config", formatConfigPath(result.config), true]);
+  rows.push(["CI fail threshold", result.config?.failOn || "medium"]);
+
+  if (result.report) {
+    rows.push(["Findings displayed", `${result.report.displayedFindings} of ${result.report.totalFindings}`]);
+  }
+
+  if (result.baseline?.path) {
+    rows.push(["Baseline suppressed", `${result.baseline.suppressed} of ${result.baseline.entries}`]);
+  }
+
+  return rows;
+}
+
 function statusLabel(summary) {
   if (summary.high > 0) {
     return "action required";
@@ -636,11 +649,7 @@ function toSarifLevel(severity) {
     return "error";
   }
 
-  if (severity === "medium") {
-    return "warning";
-  }
-
-  if (severity === "low") {
+  if (severity === "medium" || severity === "low") {
     return "warning";
   }
 

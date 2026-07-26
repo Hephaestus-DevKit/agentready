@@ -5,6 +5,7 @@ import { scanProject } from "./scanner.js";
 import { addFingerprints } from "./fingerprint.js";
 import { enrichFindings } from "./rules.js";
 import { summarizeSeverities } from "./utils.js";
+import { TOOL_VERSION } from "./version.js";
 
 export async function runDoctor(root, options = {}) {
   const result = await scanProject(root, options);
@@ -46,6 +47,7 @@ export async function runDoctor(root, options = {}) {
 
   return {
     schemaVersion: "1",
+    toolVersion: TOOL_VERSION,
     root,
     scannedAt: new Date().toISOString(),
     durationMs: result.durationMs,

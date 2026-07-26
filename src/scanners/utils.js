@@ -1,7 +1,14 @@
-export function findLine(content, needle) {
-  const lines = content.split(/\r\n|\r|\n/);
-  const index = lines.findIndex((line) => line.includes(needle));
-  return index === -1 ? null : index + 1;
+/**
+ * Split `content` once and return a finder that reports the 1-based line number
+ * of the first line containing a needle (or null). Preferred over repeated
+ * findLine calls on the same content, which would re-split the file each time.
+ */
+export function createLineFinder(content) {
+  const lines = splitLines(content);
+  return (needle) => {
+    const index = lines.findIndex((line) => line.includes(needle));
+    return index === -1 ? null : index + 1;
+  };
 }
 
 export function redact(value) {
@@ -22,6 +29,6 @@ export function splitLines(content) {
   return content.split(/\r\n|\r|\n/);
 }
 
-export function escapeRegExp(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
+// Re-export the canonical implementation from ../utils.js so there is a single
+// source of truth; existing scanner consumers keep importing it from here.
+export { escapeRegExp } from "../utils.js";

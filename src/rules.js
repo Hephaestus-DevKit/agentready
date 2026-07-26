@@ -1,5 +1,10 @@
 import { escapeMarkdown } from "./utils.js";
 
+// Canonical documentation page for all rules. Kept in sync with the SARIF
+// helpUri in reporters.js so text/JSON/SARIF output all point at a URL that
+// actually resolves.
+export const RULE_DOCS_URL = "https://github.com/Hephaestus-DevKit/agentready/blob/main/docs/RULES.md";
+
 export const RULE_CATALOG = [
   rule("agent.missing_agents_md", "info", "AGENTS.md is missing", "Create AGENTS.md to document safe AI agent operating boundaries."),
   rule("agent.missing_agentignore", "low", ".agentignore is missing", "Create .agentignore to mark sensitive paths agents should avoid."),
@@ -63,7 +68,7 @@ export function enrichFindings(findings) {
     const metadata = RULE_BY_ID.get(finding.id);
     const category = finding.category || metadata?.category || categoryForRule(finding.id);
     const why = finding.why || metadata?.why || whyForCategory(category);
-    const fixUrl = finding.fixUrl || metadata?.fixUrl || ruleUrl(finding.id);
+    const fixUrl = finding.fixUrl || metadata?.fixUrl || RULE_DOCS_URL;
     // Spread finding first so computed values override undefined fields from finding
     return {
       ...finding,
@@ -107,16 +112,6 @@ export function formatRules(format = "text", filters = {}) {
   return rules.map((item) => `${item.id} [${item.defaultSeverity}] [${item.category}] ${item.description}\n  Fix: ${item.fixUrl}`).join("\n");
 }
 
-/**
- * Build a URL pointing to the rule's documentation page.
- * Dots and underscores in the rule id are replaced with dashes.
- * @param {string} id - Rule identifier, e.g. "secret.private_key".
- * @returns {string} Canonical documentation URL for the rule.
- */
-function ruleUrl(id) {
-  return `https://agentready.dev/rules/${id.replace(/[._]/g, "-")}`;
-}
-
 function rule(id, defaultSeverity, description, recommendation) {
   const category = categoryForRule(id);
   return {
@@ -125,7 +120,7 @@ function rule(id, defaultSeverity, description, recommendation) {
     category,
     description,
     recommendation,
-    fixUrl: ruleUrl(id),
+    fixUrl: RULE_DOCS_URL,
     why: whyForCategory(category)
   };
 }

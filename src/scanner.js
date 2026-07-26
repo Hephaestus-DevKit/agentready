@@ -7,6 +7,7 @@ import { applyBaseline } from "./baseline.js";
 import { addFingerprints } from "./fingerprint.js";
 import { toRelative, summarizeSeverities } from "./utils.js";
 import { enrichFindings } from "./rules.js";
+import { TOOL_VERSION } from "./version.js";
 import { MCP_CONFIG_NAMES, scanMcpConfig } from "./scanners/mcp.js";
 import { isSensitivePath, scanSecretContent, scanSensitiveFileName } from "./scanners/secrets.js";
 import { scanDangerousShell } from "./scanners/shell.js";
@@ -56,6 +57,7 @@ export async function scanProject(root, options = {}) {
 
   return {
     schemaVersion: "1",
+    toolVersion: TOOL_VERSION,
     root,
     scannedAt: new Date().toISOString(),
     durationMs: Date.now() - startedAt,

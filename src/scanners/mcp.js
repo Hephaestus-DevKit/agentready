@@ -1,4 +1,4 @@
-import { findLine, redact } from "./utils.js";
+import { createLineFinder, redact } from "./utils.js";
 
 export const MCP_CONFIG_NAMES = new Set([
   "claude_desktop_config.json",
@@ -19,6 +19,7 @@ export function scanMcpConfig(relativePath, basename, content) {
   }
 
   const findings = [];
+  const findLineIn = createLineFinder(content);
   const serialized = JSON.stringify(parsed, null, 2);
   const stringValues = collectJsonStrings(parsed);
   const entries = collectJsonEntries(parsed);
@@ -29,7 +30,7 @@ export function scanMcpConfig(relativePath, basename, content) {
       severity: "medium",
       title: "MCP configuration can launch a shell",
       file: relativePath,
-      line: findLine(content, "command"),
+      line: findLineIn("command"),
       evidence: "Shell-like command found in MCP configuration.",
       recommendation: "Restrict shell-capable MCP servers and require human approval for destructive commands."
     });
@@ -66,7 +67,7 @@ export function scanMcpConfig(relativePath, basename, content) {
       severity: "medium",
       title: "MCP configuration forwards authorization headers",
       file: relativePath,
-      line: findLine(content, authorizationRisk.needle),
+      line: findLineIn(authorizationRisk.needle),
       evidence: "Authorization header or bearer token forwarding found in MCP configuration.",
       recommendation: "Pass credentials only to reviewed MCP servers and prefer scoped, short-lived tokens."
     });
@@ -79,7 +80,7 @@ export function scanMcpConfig(relativePath, basename, content) {
       severity: "medium",
       title: "MCP configuration includes OAuth client settings",
       file: relativePath,
-      line: findLine(content, oauthRisk.needle),
+      line: findLineIn(oauthRisk.needle),
       evidence: "OAuth client configuration fields found in MCP configuration.",
       recommendation: "Review OAuth scopes, redirect URIs, token storage, and consent flow before exposing this server to agents."
     });
@@ -92,7 +93,7 @@ export function scanMcpConfig(relativePath, basename, content) {
       severity: risk.severity,
       title: risk.title,
       file: relativePath,
-      line: findLine(content, risk.host),
+      line: findLineIn(risk.host),
       evidence: risk.evidence,
       recommendation: risk.recommendation
     });

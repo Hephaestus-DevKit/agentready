@@ -1,5 +1,5 @@
 import { classifyDangerousCommand } from "./shell.js";
-import { escapeRegExp, redact } from "./utils.js";
+import { escapeRegExp, redact, splitLines } from "./utils.js";
 
 export function scanGitHubActions(relativePath, content) {
   if (!relativePath.startsWith(".github/workflows/") || !/\.(?:yml|yaml)$/i.test(relativePath)) {
@@ -7,7 +7,7 @@ export function scanGitHubActions(relativePath, content) {
   }
 
   const findings = [];
-  const lines = content.split(/\r?\n/);
+  const lines = splitLines(content);
   let inRunBlock = false;
   let runBlockIndent = 0;
   let inOnBlock = false;

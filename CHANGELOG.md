@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Fixed
+
+- JSON and SARIF reports now carry the real package version (`toolVersion` field, SARIF `tool.driver.version`) instead of a hardcoded `0.1.0`.
+- Rule `fixUrl` links now point at the repository rule documentation (`docs/RULES.md`) instead of an unregistered domain, matching the SARIF `helpUri`.
+
+### Improved
+
+- Single source of truth for the tool version (`src/version.js`), shared by the `version` command, scanner results, and reporters.
+- Table-driven CLI option parser replaces ~200 lines of per-flag branches; behavior and error messages are unchanged.
+- Consolidated duplicate `escapeRegExp` implementations and unified line splitting (`splitLines`) across scanners so lone `\r` line endings are handled consistently.
+- MCP and package.json scanners split file content once per file for line lookups instead of re-splitting on every finding.
+- Text and Markdown report summaries share one row builder instead of two parallel hand-maintained lists.
+
 ## 1.0.1
 
 ### Fixed

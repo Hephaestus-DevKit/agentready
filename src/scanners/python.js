@@ -1,8 +1,10 @@
+import { splitLines } from "./utils.js";
+
 export function scanPythonProjectFiles(relativePath, basename, content) {
   const findings = [];
 
   if (basename === "requirements.txt") {
-    const lines = content.split(/\r?\n/);
+    const lines = splitLines(content);
     for (let index = 0; index < lines.length; index += 1) {
       const line = lines[index].trim();
       if (!line || line.startsWith("#") || /^-/.test(line)) {
@@ -42,7 +44,7 @@ export function scanPythonProjectFiles(relativePath, basename, content) {
 }
 
 function hasRequiresPython(content) {
-  return content.split(/\r?\n/).some((line) => {
+  return splitLines(content).some((line) => {
     const trimmed = line.trim();
     return trimmed && !trimmed.startsWith("#") && /^requires-python\s*=/.test(trimmed);
   });

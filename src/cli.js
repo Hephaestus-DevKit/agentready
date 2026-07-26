@@ -1,6 +1,5 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { diffBaseline, loadBaseline, loadBaselineFile, summarizeBaselineDebt, writeBaseline, writePrunedBaseline } from "./baseline.js";
 import { FAIL_ON_VALUES, applyCliOverrides, loadConfig, shouldFail } from "./config.js";
 import { usageError } from "./errors.js";
@@ -13,6 +12,7 @@ import { scanProject } from "./scanner.js";
 import { SEVERITIES } from "./constants.js";
 import { sortFindings } from "./utils.js";
 import { calculateScore, formatBadgeUrl, formatBadgeMarkdown } from "./score.js";
+import { TOOL_VERSION } from "./version.js";
 
 const HELP = `AgentReady - preflight security scanner for AI coding agents
 
@@ -73,7 +73,7 @@ export async function runCli(argv) {
   }
 
   if (command === "version" || command === "--version" || command === "-v") {
-    console.log(await readVersion());
+    console.log(TOOL_VERSION);
     return;
   }
 
@@ -448,6 +448,37 @@ function rejectUnsupportedOptions(options, allowedNames) {
   }
 }
 
+// Value-taking options. `key` is the property set on the parsed options object;
+// `array` means the option may repeat and is collected into a list.
+const VALUE_OPTIONS = new Map([
+  ["--format", { key: "format" }],
+  ["--output", { key: "output" }],
+  ["-o", { key: "output" }],
+  ["--config", { key: "config" }],
+  ["--fail-on", { key: "failOn" }],
+  ["--ignore-rule", { key: "ignoreRules", array: true }],
+  ["--ignore-path", { key: "ignorePaths", array: true }],
+  ["--baseline", { key: "baseline" }],
+  ["--max-findings", { key: "maxFindings" }],
+  ["--max-file-size", { key: "maxFileSize" }],
+  ["--group-by", { key: "groupBy" }],
+  ["--category", { key: "category" }],
+  ["--severity", { key: "severity" }],
+  ["--preset", { key: "preset" }]
+]);
+
+// Boolean flags. Presence sets the mapped property to true.
+const BOOLEAN_OPTIONS = new Map([
+  ["--ci", "ci"],
+  ["--summary-only", "summaryOnly"],
+  ["--force", "force"],
+  ["--dry-run", "dryRun"],
+  ["--with-ci", "withCi"],
+  ["--quiet", "quiet"],
+  ["--verbose", "verbose"],
+  ["--no-color", "noColor"]
+]);
+
 function parseOptions(args) {
   const options = {
     positionals: [],
@@ -457,187 +488,32 @@ function parseOptions(args) {
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
+    // Only long options support the --name=value form; "-o" and positionals
+    // that happen to contain "=" are matched literally.
+    const eqIndex = arg.startsWith("--") ? arg.indexOf("=") : -1;
+    const name = eqIndex === -1 ? arg : arg.slice(0, eqIndex);
 
-    if (arg === "--format") {
-      options.format = readOptionValue(args, index, "--format");
-      index += 1;
+    const valueOption = VALUE_OPTIONS.get(name);
+    if (valueOption) {
+      let value;
+      if (eqIndex === -1) {
+        value = readOptionValue(args, index, name);
+        index += 1;
+      } else {
+        value = arg.slice(eqIndex + 1);
+      }
+
+      if (valueOption.array) {
+        options[valueOption.key].push(value);
+      } else {
+        options[valueOption.key] = value;
+      }
       continue;
     }
 
-    if (arg.startsWith("--format=")) {
-      options.format = arg.slice("--format=".length);
-      continue;
-    }
-
-    if (arg === "--output" || arg === "-o") {
-      options.output = readOptionValue(args, index, arg);
-      index += 1;
-      continue;
-    }
-
-    if (arg.startsWith("--output=")) {
-      options.output = arg.slice("--output=".length);
-      continue;
-    }
-
-    if (arg === "--ci") {
-      options.ci = true;
-      continue;
-    }
-
-    if (arg === "--config") {
-      options.config = readOptionValue(args, index, "--config");
-      index += 1;
-      continue;
-    }
-
-    if (arg.startsWith("--config=")) {
-      options.config = arg.slice("--config=".length);
-      continue;
-    }
-
-    if (arg === "--fail-on") {
-      options.failOn = readOptionValue(args, index, "--fail-on");
-      index += 1;
-      continue;
-    }
-
-    if (arg.startsWith("--fail-on=")) {
-      options.failOn = arg.slice("--fail-on=".length);
-      continue;
-    }
-
-    if (arg === "--ignore-rule") {
-      options.ignoreRules.push(readOptionValue(args, index, "--ignore-rule"));
-      index += 1;
-      continue;
-    }
-
-    if (arg.startsWith("--ignore-rule=")) {
-      options.ignoreRules.push(arg.slice("--ignore-rule=".length));
-      continue;
-    }
-
-    if (arg === "--ignore-path") {
-      options.ignorePaths.push(readOptionValue(args, index, "--ignore-path"));
-      index += 1;
-      continue;
-    }
-
-    if (arg.startsWith("--ignore-path=")) {
-      options.ignorePaths.push(arg.slice("--ignore-path=".length));
-      continue;
-    }
-
-    if (arg === "--baseline") {
-      options.baseline = readOptionValue(args, index, "--baseline");
-      index += 1;
-      continue;
-    }
-
-    if (arg.startsWith("--baseline=")) {
-      options.baseline = arg.slice("--baseline=".length);
-      continue;
-    }
-
-    if (arg === "--max-findings") {
-      options.maxFindings = readOptionValue(args, index, "--max-findings");
-      index += 1;
-      continue;
-    }
-
-    if (arg.startsWith("--max-findings=")) {
-      options.maxFindings = arg.slice("--max-findings=".length);
-      continue;
-    }
-
-    if (arg === "--max-file-size") {
-      options.maxFileSize = readOptionValue(args, index, "--max-file-size");
-      index += 1;
-      continue;
-    }
-
-    if (arg.startsWith("--max-file-size=")) {
-      options.maxFileSize = arg.slice("--max-file-size=".length);
-      continue;
-    }
-
-    if (arg === "--summary-only") {
-      options.summaryOnly = true;
-      continue;
-    }
-
-    if (arg === "--group-by") {
-      options.groupBy = readOptionValue(args, index, "--group-by");
-      index += 1;
-      continue;
-    }
-
-    if (arg.startsWith("--group-by=")) {
-      options.groupBy = arg.slice("--group-by=".length);
-      continue;
-    }
-
-    if (arg === "--category") {
-      options.category = readOptionValue(args, index, "--category");
-      index += 1;
-      continue;
-    }
-
-    if (arg.startsWith("--category=")) {
-      options.category = arg.slice("--category=".length);
-      continue;
-    }
-
-    if (arg === "--severity") {
-      options.severity = readOptionValue(args, index, "--severity");
-      index += 1;
-      continue;
-    }
-
-    if (arg.startsWith("--severity=")) {
-      options.severity = arg.slice("--severity=".length);
-      continue;
-    }
-
-    if (arg === "--preset") {
-      options.preset = readOptionValue(args, index, "--preset");
-      index += 1;
-      continue;
-    }
-
-    if (arg.startsWith("--preset=")) {
-      options.preset = arg.slice("--preset=".length);
-      continue;
-    }
-
-    if (arg === "--force") {
-      options.force = true;
-      continue;
-    }
-
-    if (arg === "--dry-run") {
-      options.dryRun = true;
-      continue;
-    }
-
-    if (arg === "--with-ci") {
-      options.withCi = true;
-      continue;
-    }
-
-    if (arg === "--quiet") {
-      options.quiet = true;
-      continue;
-    }
-
-    if (arg === "--verbose") {
-      options.verbose = true;
-      continue;
-    }
-
-    if (arg === "--no-color") {
-      options.noColor = true;
+    const booleanKey = BOOLEAN_OPTIONS.get(arg);
+    if (booleanKey) {
+      options[booleanKey] = true;
       continue;
     }
 
@@ -713,18 +589,6 @@ function applyReportOptions(result, options) {
 
 function resolveBaselinePathOption(target, options, config) {
   return options.baseline || config.baselinePath || path.join(target, ".agentready-baseline.json");
-}
-
-let cachedVersion = null;
-
-async function readVersion() {
-  if (cachedVersion) {
-    return cachedVersion;
-  }
-  const packagePath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "package.json");
-  const parsed = JSON.parse(await readFile(packagePath, "utf8"));
-  cachedVersion = parsed.version;
-  return cachedVersion;
 }
 
 async function handleBadge(args) {

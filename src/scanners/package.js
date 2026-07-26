@@ -1,5 +1,5 @@
 import { classifyDangerousCommand } from "./shell.js";
-import { findLine, redact } from "./utils.js";
+import { createLineFinder, redact } from "./utils.js";
 
 export function scanPackageJson(relativePath, basename, content) {
   if (basename !== "package.json") {
@@ -24,6 +24,7 @@ export function scanPackageJson(relativePath, basename, content) {
   }
 
   const findings = [];
+  const findLineIn = createLineFinder(content);
   // Guard: scripts must be a plain object (not array, string, etc.)
   const scripts =
     parsed.scripts && typeof parsed.scripts === "object" && !Array.isArray(parsed.scripts)
@@ -37,7 +38,7 @@ export function scanPackageJson(relativePath, basename, content) {
         severity: commandFinding.severity,
         title: `Risky npm script: ${name}`,
         file: relativePath,
-        line: findLine(content, `"${name}"`),
+        line: findLineIn(`"${name}"`),
         evidence: `${name}: ${redact(String(command))}`,
         recommendation: commandFinding.recommendation
       });
@@ -51,7 +52,7 @@ export function scanPackageJson(relativePath, basename, content) {
         severity: "medium",
         title: `Package lifecycle script detected: ${lifecycle}`,
         file: relativePath,
-        line: findLine(content, `"${lifecycle}"`),
+        line: findLineIn(`"${lifecycle}"`),
         evidence: `${lifecycle}: ${redact(String(scripts[lifecycle]))}`,
         recommendation: "Review lifecycle scripts before allowing agents or CI to install dependencies automatically."
       });

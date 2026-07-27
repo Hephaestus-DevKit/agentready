@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.1
+
+- Published the package under the `@hephaestus-devkit` scope and verified public installation through the npm registry.
+
 ## 1.1.0
 
 ### Changed

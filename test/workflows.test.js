@@ -91,7 +91,7 @@ test("scorecard workflow uploads SARIF with current action versions", async () =
   const workflow = await readFile(repoPath(".github", "workflows", "scorecard.yml"), "utf8");
 
   assert.match(workflow, pinned("actions/checkout", "v7"));
-  assert.match(workflow, pinned("ossf/scorecard-action", "v2\\.4\\.3"));
+  assert.match(workflow, pinned("ossf/scorecard-action", "v2\\.4\\.4"));
   assert.match(workflow, pinned("github/codeql-action/upload-sarif", "v4"));
   assert.match(workflow, /security-events:\s*write/);
 });

@@ -2,7 +2,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { SEVERITIES } from "./constants.js";
 import { RULE_CATALOG, RULE_DOCS_URL } from "./rules.js";
-import { sortFindings, escapeMarkdown } from "./utils.js";
+import { sortFindings, escapeMarkdown, markdownCode, stripControlChars } from "./utils.js";
 import { TOOL_VERSION } from "./version.js";
 
 const TOOL_INFORMATION_URI = "https://github.com/Hephaestus-DevKit/agentready";
@@ -104,7 +104,7 @@ export function formatMarkdown(result, options = {}) {
     "",
     "## Summary",
     "",
-    ...summaryMetaRows(result).map(([label, value, code]) => `- ${label}: ${code ? `\`${value}\`` : value}`),
+    ...summaryMetaRows(result).map(([label, value, code]) => `- ${label}: ${code ? markdownCode(value) : escapeMarkdown(value)}`),
     "",
     "| Severity | Count |",
     "| --- | ---: |",
@@ -128,7 +128,7 @@ export function formatMarkdown(result, options = {}) {
 
   lines.push("## Top Risks", "");
   for (const finding of topRisks(result.findings)) {
-    lines.push(`- **${finding.severity.toUpperCase()}** \`${formatLocation(finding)}\` ${finding.title}`);
+    lines.push(`- **${finding.severity.toUpperCase()}** ${markdownCode(formatLocation(finding))} ${escapeMarkdown(finding.title)}`);
   }
   lines.push("");
 
@@ -151,7 +151,7 @@ export function formatText(result, options = {}) {
   const lines = [
     "AgentReady Report",
     ...summaryMetaRows(result).map(([label, value]) =>
-      `${label}: ${label === "Status" ? paint(value, STATUS_COLORS[value]) : value}`
+      `${label}: ${label === "Status" ? paint(value, STATUS_COLORS[value]) : stripControlChars(value)}`
     ),
     `Summary: high=${result.summary.high} medium=${result.summary.medium} low=${result.summary.low} info=${result.summary.info}`,
     ""
@@ -173,7 +173,7 @@ export function formatText(result, options = {}) {
 
   lines.push("Top risks:");
   for (const finding of topRisks(result.findings)) {
-    lines.push(`- [${paint(finding.severity.toUpperCase(), SEVERITY_COLORS[finding.severity])}] ${formatLocation(finding)} ${finding.title}`);
+    lines.push(`- [${paint(finding.severity.toUpperCase(), SEVERITY_COLORS[finding.severity])}] ${formatLocation(finding)} ${stripControlChars(finding.title)}`);
   }
   lines.push("");
 
@@ -242,14 +242,14 @@ function reportHeader(title, rows, markdown) {
       "",
       "## Summary",
       "",
-      ...rows.map(([label, value, code]) => `- ${label}: ${code ? `\`${value}\`` : value}`),
+      ...rows.map(([label, value, code]) => `- ${label}: ${code ? markdownCode(value) : escapeMarkdown(value)}`),
       ""
     ];
   }
 
   return [
     title,
-    ...rows.map(([label, value]) => `${label}: ${value}`),
+    ...rows.map(([label, value]) => `${label}: ${stripControlChars(value)}`),
     ""
   ];
 }
@@ -261,7 +261,7 @@ function appendConfigWarnings(lines, result, markdown) {
 
   lines.push(markdown ? "## Config Warnings" : "Config warnings:", "");
   for (const warning of result.configWarnings) {
-    lines.push(`- ${markdown ? escapeMarkdown(warning) : warning}`);
+    lines.push(`- ${markdown ? escapeMarkdown(warning) : stripControlChars(warning)}`);
   }
   lines.push("");
 }
@@ -293,7 +293,7 @@ function appendMarkdownFindings(lines, findings, groupBy) {
   const byCategory = groupBy === "category";
   lines.push(byCategory ? "## Findings By Category" : "## Findings", "");
   for (const group of groupFindings(findings, groupBy)) {
-    lines.push(`### ${byCategory ? group.key : group.key.toUpperCase()}`, "");
+    lines.push(`### ${escapeMarkdown(byCategory ? group.key : group.key.toUpperCase())}`, "");
     for (const finding of group.findings) {
       appendMarkdownFinding(lines, finding);
     }
@@ -301,13 +301,13 @@ function appendMarkdownFindings(lines, findings, groupBy) {
 }
 
 function appendMarkdownFinding(lines, finding) {
-  lines.push(`#### ${finding.title}`);
+  lines.push(`#### ${escapeMarkdown(finding.title)}`);
   lines.push("");
-  lines.push(`- Rule: \`${finding.id}\``);
+  lines.push(`- Rule: ${markdownCode(finding.id)}`);
   lines.push(`- Severity: ${finding.severity}`);
-  lines.push(`- Category: ${finding.category || "general"}`);
+  lines.push(`- Category: ${escapeMarkdown(finding.category || "general")}`);
   if (finding.file) {
-    lines.push(`- Location: \`${formatLocation(finding)}\``);
+    lines.push(`- Location: ${markdownCode(formatLocation(finding))}`);
   }
   if (finding.evidence) {
     lines.push(`- Evidence: ${escapeMarkdown(finding.evidence)}`);
@@ -333,20 +333,20 @@ function appendTextFindings(lines, findings, groupBy, options) {
 }
 
 function appendTextFinding(lines, finding, options) {
-  lines.push(`- ${finding.title}`);
-  lines.push(`  Rule: ${finding.id}`);
+  lines.push(`- ${stripControlChars(finding.title)}`);
+  lines.push(`  Rule: ${stripControlChars(finding.id)}`);
   lines.push(`  Severity: ${finding.severity}`);
   lines.push(`  Category: ${finding.category || "general"}`);
   if (finding.file) {
     lines.push(`  Location: ${formatLocation(finding)}`);
   }
   if (finding.evidence) {
-    lines.push(`  Evidence: ${finding.evidence}`);
+    lines.push(`  Evidence: ${stripControlChars(finding.evidence)}`);
   }
   if (finding.why) {
-    lines.push(`  Why: ${finding.why}`);
+    lines.push(`  Why: ${stripControlChars(finding.why)}`);
   }
-  lines.push(`  Fix: ${finding.recommendation}`);
+  lines.push(`  Fix: ${stripControlChars(finding.recommendation)}`);
   if (options.verbose && finding.fingerprint) {
     lines.push(`  Fingerprint: ${finding.fingerprint}`);
   }
@@ -360,7 +360,7 @@ function appendBaselineDiffSection(lines, title, findings, markdown) {
       return;
     }
     for (const finding of findings) {
-      lines.push(`- **${finding.severity.toUpperCase()}** \`${formatLocation(finding)}\` ${finding.title} (\`${finding.id}\`)`);
+      lines.push(`- **${finding.severity.toUpperCase()}** ${markdownCode(formatLocation(finding))} ${escapeMarkdown(finding.title)} (${markdownCode(finding.id)})`);
     }
     lines.push("");
     return;
@@ -372,7 +372,7 @@ function appendBaselineDiffSection(lines, title, findings, markdown) {
     return;
   }
   for (const finding of findings) {
-    lines.push(`- [${finding.severity.toUpperCase()}] ${formatLocation(finding)} ${finding.title} (${finding.id})`);
+    lines.push(`- [${finding.severity.toUpperCase()}] ${formatLocation(finding)} ${stripControlChars(finding.title)} (${stripControlChars(finding.id)})`);
   }
   lines.push("");
 }
@@ -385,7 +385,7 @@ function appendDebtCounts(lines, title, counts, markdown) {
   }
 
   for (const item of counts) {
-    lines.push(`- ${markdown ? `\`${escapeMarkdown(item.key)}\`` : item.key}: ${item.count}`);
+    lines.push(`- ${markdown ? markdownCode(item.key) : stripControlChars(item.key)}: ${item.count}`);
   }
   lines.push("");
 }
@@ -401,9 +401,9 @@ function appendDebtFindings(lines, findings, markdown) {
     const age = formatAge(finding.ageDays);
     const location = formatLocation(finding);
     if (markdown) {
-      lines.push(`- **${finding.severity.toUpperCase()}** \`${location}\` ${finding.title} (\`${finding.id}\`, age ${age})`);
+      lines.push(`- **${finding.severity.toUpperCase()}** ${markdownCode(location)} ${escapeMarkdown(finding.title)} (${markdownCode(finding.id)}, age ${age})`);
     } else {
-      lines.push(`- [${finding.severity.toUpperCase()}] ${location} ${finding.title} (${finding.id}, age ${age})`);
+      lines.push(`- [${finding.severity.toUpperCase()}] ${location} ${stripControlChars(finding.title)} (${stripControlChars(finding.id)}, age ${age})`);
     }
   }
   lines.push("");
@@ -417,7 +417,7 @@ function formatLocation(finding) {
   if (!finding.file) {
     return "(project)";
   }
-  return finding.line ? `${finding.file}:${finding.line}` : finding.file;
+  return stripControlChars(finding.line ? `${finding.file}:${finding.line}` : finding.file);
 }
 
 function formatConfigPath(config = {}) {
@@ -572,7 +572,7 @@ function toSarifResult(finding) {
       {
         physicalLocation: {
           artifactLocation: {
-            uri: finding.file,
+            uri: toSarifUri(finding.file),
             uriBaseId: "PROJECTROOT"
           }
         }
@@ -587,6 +587,12 @@ function toSarifResult(finding) {
   }
 
   return result;
+}
+
+// SARIF artifact locations are URI references: encode each path segment so
+// `#`, `%`, `?`, and spaces in file names keep their literal meaning.
+function toSarifUri(file) {
+  return String(file).split("/").map(encodeURIComponent).join("/");
 }
 
 function toSarifBaseUri(root) {

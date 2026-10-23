@@ -71,7 +71,8 @@ Next steps:
 - Risky package scripts, shell scripts, Dockerfile/Makefile-style project files,
   and GitHub Actions `run` commands
 - Overbroad GitHub Actions permissions, `pull_request_target`, inherited secrets,
-  floating action references, and unsafe `pull_request_target` checkout patterns
+  floating action references, unsafe `pull_request_target` checkout patterns,
+  and untrusted event data interpolated into `run` scripts
 - MCP configurations with shell tools, broad filesystem access, inline secret
   values, authorization forwarding, OAuth client settings, remote URLs, private
   network URLs, or cloud metadata endpoints

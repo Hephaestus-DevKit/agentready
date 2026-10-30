@@ -52,12 +52,14 @@ sensitive files or MCP configurations. GitHub Actions template expressions
 The current catalog includes rules for:
 
 - agent boundary files and sensitive path exposure
-- secret material in agent-readable files
+- secret material in agent-readable files, including GitHub, npm, Hugging Face,
+  AWS, Anthropic, OpenAI, Stripe, Google, and Slack token formats
 - risky package, shell, Dockerfile/Makefile-style, and workflow commands
 - GitHub Actions permissions, inherited secrets, floating `uses:` references,
   unsafe `pull_request_target` checkout patterns, `workflow_run` chains,
-  comment-triggered commands, cache restore risks, artifact execution, and
-  OIDC deployment combinations
+  comment-triggered commands, cache restore risks, artifact execution, OIDC
+  deployment combinations, and untrusted context interpolated into `run:`
+  scripts
 - MCP shell tools, broad filesystem access, inline secrets, remote endpoints,
   authorization forwarding, OAuth client settings, private network endpoints,
   and cloud metadata endpoints

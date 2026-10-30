@@ -1,5 +1,34 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `github_actions.script_injection` (high): flags `run:` commands that interpolate attacker-controlled GitHub context (`github.head_ref`, issue/PR titles and bodies, comment and review bodies, commit messages and author names, `workflow_run` head metadata) with `${{ }}`. Passing the value through `env:` and referencing it as a shell variable is not flagged.
+- `secret.npm_token` (high) and `secret.huggingface_token` (high) detection, with matching evidence redaction.
+- `secret.github_token` now also detects fine-grained personal access tokens (`github_pat_...`), and `secret.aws_access_key` now also detects temporary STS session keys (`ASIA...`). Redacted evidence keeps the token-family prefix.
+
+### Improved
+
+- Baselines survive edits above a reviewed finding. Findings now carry a line-independent `stableFingerprint` (repeats of the same finding are distinguished by order), and baseline entries record it. Matching accepts either fingerprint, so baselines written by earlier versions keep working unchanged; `baseline prune` upgrades their entries. The exact `fingerprint` is unchanged.
+- Regenerating a baseline (`agentready baseline .`) preserves `firstSeenAt` for findings that were already recorded, so `debt` ages are no longer reset.
+- `baseline diff --ci [--fail-on level]` exits with code 1 when new findings reach the threshold, so a baseline can be enforced without a full scan.
+- `agentready <command> --help` prints usage instead of "Unknown option: --help".
+
+### Fixed
+
+- Remote code execution detection no longer misses common install idioms: `irm ... | iex` and `Invoke-RestMethod`, `iex (irm ...)` and `iex ((New-Object Net.WebClient).DownloadString(...))`, `bash -c "$(curl ...)"`, `eval "$(curl ...)"`, `source <(curl ...)`, and downloads piped into a bare `python`, `perl`, `ruby`, or `node`. Pretty-printing pipelines such as `curl ... | python3 -m json.tool` stay quiet.
+- `echo`/`printf` lines whose only separators sit inside quoted text (for example `echo 'install with: curl ... | sh'`) are no longer flagged as executing the quoted command. Quoted text containing `$(...)` or backticks is still analyzed because it executes.
+- GitHub Actions write permissions are detected in flow style (`permissions: { contents: write }`) and with quoted values (`contents: 'write'`), and the scope list now includes `attestations`, `discussions`, `pages`, and `repository-projects`. Block-style evidence is unchanged, so existing baselines stay valid.
+- `persist-credentials: "true"` (quoted) is flagged like the unquoted form.
+- SARIF output always contains every finding. `--summary-only`, `--max-findings`, and `--group-by` previously truncated the SARIF upload, which makes code scanning auto-close the alerts that were left out (the composite action passes these flags through). SARIF artifact URIs are now percent-encoded per path segment, so file names containing `#`, `%`, `?`, or spaces keep their meaning.
+- Scanning a file instead of a directory is now a usage error (exit 2). It previously walked zero files, printed a clean report, and passed `--ci`.
+- Extra positional paths (`agentready scan a b`) are rejected instead of silently ignored, and empty option values (`--max-findings=`, `--fail-on=`) are rejected instead of hiding every finding or being ignored. `--max-findings` accepts decimal digits only (`1e1` and `0x10` are no longer parsed as numbers).
+- Markdown reports escape repository-controlled text (finding titles, evidence, group names, baseline entries) and use collision-proof code spans for file names and rule ids, so scanned content can no longer inject HTML, links, tracking images, or headings into PR comments and job summaries. Text reports strip terminal control characters from the same fields.
+- Suggested commands (`init`, `quickstart`) quote paths containing any shell metacharacter (`&`, `;`, `(`, `|`, `>`, `*`, `!`, `#`, leading `~`), not just whitespace and quotes.
+- `init` no longer writes through symbolic links (a cloned repository could point `AGENTS.md` at a file outside the project) and requires an existing target directory instead of creating a mistyped path, including in `--dry-run`.
+- A hand-edited baseline with non-string `file` or non-integer `line` fields no longer crashes `debt` with a stack trace.
+
 ## 1.1.1
 
 - Published the package under the `@hephaestus-devkit` scope and verified public installation through the npm registry.

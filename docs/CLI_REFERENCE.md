@@ -57,6 +57,8 @@ code `2` instead of being ignored.
 
 `--max-findings` and `--summary-only` change only the amount of detail printed
 in the report. CI failure decisions still use the complete scan result.
+SARIF output is never limited by them: it always contains every finding, because
+code scanning closes alerts that are missing from an upload.
 `--group-by category` is useful for Markdown reports posted into pull requests.
 `--max-file-size` changes the maximum input file size AgentReady reads during
 the scan. The default is `524288` bytes.
@@ -90,7 +92,10 @@ baseline debt.
 new findings plus stale entries. `baseline prune` rewrites the baseline with
 only entries that still match current findings. Both commands respect the same
 configuration and explicit ignore options used when building the comparison
-scan.
+scan. `baseline diff --ci` exits with code `1` when new findings reach the
+`--fail-on` threshold (default from configuration), which enforces a baseline
+without a full scan report. The target must be a directory, and `--help` after
+any command prints usage.
 
 ## Debt Options
 

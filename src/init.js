@@ -1,5 +1,4 @@
-import { existsSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { lstat, mkdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { formatCommandPath } from "./command-path.js";
 import { MAX_FILE_BYTES } from "./constants.js";
@@ -101,6 +100,13 @@ export async function runInit(root, options = {}) {
     throw usageError(`Unsupported preset "${preset}". Use balanced, strict, or legacy.`);
   }
 
+  // init writes into an existing project; silently creating a mistyped path
+  // (and, in dry-run, claiming it would) hides the typo.
+  const rootStat = await stat(root).catch(() => null);
+  if (!rootStat?.isDirectory()) {
+    throw usageError(`Init target must be an existing directory: ${root}`);
+  }
+
   const messages = [];
   const targetArg = formatCommandPath(root);
   const agentignore = buildAgentignore(preset);
@@ -153,8 +159,17 @@ function buildConfig(preset) {
 
 async function ensureFile(root, relativePath, content, options, messages) {
   const filePath = path.join(root, relativePath);
-  const existed = existsSync(filePath);
   const displayPath = relativePath.replaceAll("\\", "/");
+
+  // lstat (not existsSync) so a symlink is seen as a symlink: following it
+  // would create or overwrite a file outside the project, for example when a
+  // cloned repository ships `AGENTS.md -> ~/.ssh/authorized_keys`.
+  const existing = await lstat(filePath).catch(() => null);
+  if (existing?.isSymbolicLink()) {
+    messages.push(`Skipped symbolic link ${displayPath} (refusing to write through it)`);
+    return;
+  }
+  const existed = existing !== null;
 
   if (existed && !options.force) {
     messages.push(`Skipped existing ${displayPath}`);

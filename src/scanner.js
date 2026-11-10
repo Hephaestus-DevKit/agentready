@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { DEFAULT_IGNORED_DIRS, MAX_FILE_BYTES, TEXT_EXTENSIONS, TEXT_FILE_NAMES } from "./constants.js";
@@ -22,6 +22,11 @@ export async function scanProject(root, options = {}) {
     // Usage error (exit 2): a missing target is caller input, not a crash,
     // so the CLI should print a clean message instead of a stack trace.
     throw usageError(`Scan target does not exist: ${root}`);
+  }
+  // A file target would walk zero files and report a clean scan, which a
+  // `--ci` gate would read as a pass.
+  if (!statSync(root).isDirectory()) {
+    throw usageError(`Scan target must be a directory: ${root}`);
   }
   const config = options.config || DEFAULT_CONFIG;
   const collected = await collectFiles(root, config);

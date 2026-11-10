@@ -38,6 +38,9 @@
           "fingerprint": {
             "type": "string"
           },
+          "stableFingerprint": {
+            "type": "string"
+          },
           "id": {
             "type": "string"
           },

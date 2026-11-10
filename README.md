@@ -71,7 +71,8 @@ Next steps:
 - Risky package scripts, shell scripts, Dockerfile/Makefile-style project files,
   and GitHub Actions `run` commands
 - Overbroad GitHub Actions permissions, `pull_request_target`, inherited secrets,
-  floating action references, and unsafe `pull_request_target` checkout patterns
+  floating action references, unsafe `pull_request_target` checkout patterns,
+  and untrusted event data interpolated into `run` scripts
 - MCP configurations with shell tools, broad filesystem access, inline secret
   values, authorization forwarding, OAuth client settings, remote URLs, private
   network URLs, or cloud metadata endpoints
@@ -185,7 +186,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: Hephaestus-DevKit/agentready@v1.1.0
+      - uses: Hephaestus-DevKit/agentready@v1.2.0
         with:
           fail-on: medium
           format: sarif

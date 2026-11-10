@@ -17,7 +17,8 @@ export async function loadBaseline(root, baselinePath = null) {
     path: baseline.path,
     entries: fingerprints.size,
     findings: baseline.findings,
-    fingerprints
+    fingerprints,
+    stableFingerprints: new Set(baseline.findings.map((finding) => finding.stableFingerprint).filter(Boolean))
   };
 }
 
@@ -51,6 +52,16 @@ export async function loadBaselineFile(root, baselinePath) {
   };
 }
 
+// A finding is baselined when its exact fingerprint is recorded, or, for
+// baselines written by newer versions, when its line-independent fingerprint
+// is (so edits above the finding do not resurrect it).
+function isBaselined(baseline, finding) {
+  return (
+    baseline.fingerprints.has(finding.fingerprint) ||
+    (finding.stableFingerprint !== undefined && baseline.stableFingerprints?.has(finding.stableFingerprint) === true)
+  );
+}
+
 export function applyBaseline(findings, baseline) {
   if (!baseline) {
     return {
@@ -67,7 +78,7 @@ export function applyBaseline(findings, baseline) {
   let suppressed = 0;
 
   for (const finding of findings) {
-    if (baseline.fingerprints.has(finding.fingerprint)) {
+    if (isBaselined(baseline, finding)) {
       suppressed += 1;
       continue;
     }
@@ -85,11 +96,38 @@ export function applyBaseline(findings, baseline) {
 }
 
 export async function writeBaseline(filePath, scanResult) {
-  const baseline = buildBaseline(scanResult.findings);
+  const previous = await readPreviousEntries(filePath);
+  const generatedAt = new Date().toISOString();
+  const baseline = buildBaseline(
+    scanResult.findings.map((finding) =>
+      toBaselineEntry(finding, generatedAt, previous.byFingerprint.get(finding.fingerprint) || previous.byStable.get(finding.stableFingerprint))
+    ),
+    { generatedAt }
+  );
 
   await mkdir(path.dirname(filePath), { recursive: true });
   await writeFile(filePath, `${JSON.stringify(baseline, null, 2)}\n`, "utf8");
   return baseline;
+}
+
+// Regenerating a baseline must not reset when each finding was first seen,
+// or `debt` would lose its age information. A missing or unreadable previous
+// file simply means there is nothing to preserve.
+async function readPreviousEntries(filePath) {
+  const byFingerprint = new Map();
+  const byStable = new Map();
+  try {
+    const parsed = JSON.parse(await readFile(filePath, "utf8"));
+    for (const entry of normalizeBaselineFindings(Array.isArray(parsed?.findings) ? parsed.findings : [])) {
+      byFingerprint.set(entry.fingerprint, entry);
+      if (entry.stableFingerprint) {
+        byStable.set(entry.stableFingerprint, entry);
+      }
+    }
+  } catch {
+    // No previous baseline to merge.
+  }
+  return { byFingerprint, byStable };
 }
 
 export async function writePrunedBaseline(filePath, diff) {
@@ -112,9 +150,13 @@ export async function writePrunedBaseline(filePath, diff) {
 
 export function diffBaseline(scanFindings, baseline) {
   const currentByFingerprint = new Map();
+  const currentByStable = new Map();
   for (const finding of scanFindings) {
     if (finding.fingerprint && !currentByFingerprint.has(finding.fingerprint)) {
       currentByFingerprint.set(finding.fingerprint, finding);
+      if (finding.stableFingerprint && !currentByStable.has(finding.stableFingerprint)) {
+        currentByStable.set(finding.stableFingerprint, finding);
+      }
     }
   }
 
@@ -127,22 +169,31 @@ export function diffBaseline(scanFindings, baseline) {
 
   const matched = [];
   const stale = [];
-  const added = [];
+  const claimed = new Set();
 
+  // Exact fingerprints win; only then fall back to the line-independent one so
+  // a moved finding cannot steal another entry's exact match.
+  const pending = [];
   for (const [fingerprint, baselineFinding] of baselineByFingerprint) {
     const current = currentByFingerprint.get(fingerprint);
     if (current) {
+      claimed.add(current.fingerprint);
+      matched.push({ fingerprint, baseline: baselineFinding, current });
+    } else {
+      pending.push([fingerprint, baselineFinding]);
+    }
+  }
+  for (const [fingerprint, baselineFinding] of pending) {
+    const current = baselineFinding.stableFingerprint ? currentByStable.get(baselineFinding.stableFingerprint) : undefined;
+    if (current && !claimed.has(current.fingerprint)) {
+      claimed.add(current.fingerprint);
       matched.push({ fingerprint, baseline: baselineFinding, current });
     } else {
       stale.push(baselineFinding);
     }
   }
 
-  for (const [fingerprint, current] of currentByFingerprint) {
-    if (!baselineByFingerprint.has(fingerprint)) {
-      added.push(current);
-    }
-  }
+  const added = [...currentByFingerprint.values()].filter((finding) => !claimed.has(finding.fingerprint));
 
   return {
     baselinePath: baseline.path,
@@ -204,6 +255,7 @@ function buildBaseline(findings, extra = {}) {
 function toBaselineEntry(finding, seenAt, previous = {}) {
   return {
     fingerprint: finding.fingerprint,
+    ...(finding.stableFingerprint ? { stableFingerprint: finding.stableFingerprint } : {}),
     id: finding.id,
     severity: finding.severity,
     title: finding.title,
@@ -219,11 +271,12 @@ function normalizeBaselineFindings(findings) {
     .filter((finding) => finding && typeof finding === "object" && typeof finding.fingerprint === "string")
     .map((finding) => ({
       fingerprint: finding.fingerprint,
+      ...(typeof finding.stableFingerprint === "string" ? { stableFingerprint: finding.stableFingerprint } : {}),
       id: typeof finding.id === "string" ? finding.id : "unknown",
       severity: SEVERITIES.includes(finding.severity) ? finding.severity : "info",
       title: typeof finding.title === "string" ? finding.title : "Baseline finding",
-      file: finding.file || null,
-      line: finding.line || null,
+      file: typeof finding.file === "string" ? finding.file : null,
+      line: Number.isInteger(finding.line) && finding.line > 0 ? finding.line : null,
       firstSeenAt: typeof finding.firstSeenAt === "string" ? finding.firstSeenAt : null,
       lastSeenAt: typeof finding.lastSeenAt === "string" ? finding.lastSeenAt : null
     }));

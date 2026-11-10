@@ -198,6 +198,9 @@
         },
         "fingerprint": {
           "type": "string"
+        },
+        "stableFingerprint": {
+          "type": "string"
         }
       }
     }

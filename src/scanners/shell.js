@@ -106,6 +106,29 @@ const BROAD_DELETE_ROOTS = String.raw`\/(?!(?:var\/)?tmp\/[^\s"'])|\*|~|\$(?:HOM
 const RM_LATER_TARGET = new RegExp(String.raw`\brm\s+.+\s+["']?(?:${BROAD_DELETE_ROOTS}|[A-Za-z]:[\\/])`, "i");
 const RM_DIRECT_TARGET = new RegExp(String.raw`\brm\s+(?:-[A-Za-z]*r[A-Za-z]*\s+-[A-Za-z]*f[A-Za-z]*|-[A-Za-z]*f[A-Za-z]*\s+-[A-Za-z]*r[A-Za-z]*|-(?=[A-Za-z]*r)(?=[A-Za-z]*f)[A-Za-z]+)\s+["']?(?:${BROAD_DELETE_ROOTS})`, "i");
 
+// Quoted text is inert for the echo/printf guard below. Single quotes never
+// expand, and a double-quoted string only runs code when it contains `$(` or a
+// backtick, so those are left in place and still count as separators.
+const INERT_QUOTED_TEXT = /'[^']*'|"(?:[^"\\`$]|\\.|\$(?!\())*"/g;
+
+// Remote download piped into an interpreter that executes stdin. A bare
+// `| python3` (or `python3 -`) runs the payload, while `| python -m json.tool`
+// only pretty-prints it, so interpreters other than shells must end the
+// pipeline without a script argument.
+const DOWNLOAD_TOOLS = String.raw`(?:curl|wget|iwr|irm|Invoke-WebRequest|Invoke-RestMethod)`;
+const PIPE_PREFIX = String.raw`\|\s*(?:sudo\s+(?:-\S+\s+)*)?(?:env\s+(?:\S+=\S*\s+)*)?`;
+const REMOTE_PIPE_TO_SHELL = new RegExp(String.raw`\b${DOWNLOAD_TOOLS}\b.+${PIPE_PREFIX}(?:sh|bash|zsh|pwsh|powershell|iex|Invoke-Expression)\b`, "i");
+const REMOTE_PIPE_TO_INTERPRETER = new RegExp(
+  String.raw`\b${DOWNLOAD_TOOLS}\b.+${PIPE_PREFIX}(?:python[0-9.]*|perl|ruby|node)(?:\s+-)?\s*(?:$|[;&|)])`,
+  "i"
+);
+// Executing the output of a download via command/process substitution:
+// `bash -c "$(curl ...)"`, `eval "$(curl ...)"`, `source <(curl ...)`.
+const REMOTE_SUBSTITUTION = /\b(?:(?:ba|z|da|k)?sh|eval|source)(?:\s+-[A-Za-z]+)*\s+["']?(?:\$\(|`|<\()\s*(?:sudo\s+)?(?:curl|wget)\b/i;
+// PowerShell evaluates a download directly: `iex (irm ...)`,
+// `iex ((New-Object Net.WebClient).DownloadString(...))`.
+const REMOTE_POWERSHELL_EVAL = /\b(?:iex|Invoke-Expression)\b[\s(]*(?:iwr|irm|Invoke-WebRequest|Invoke-RestMethod|New-Object\s+(?:System\.)?Net\.WebClient\s*\)?\s*\.\s*Download(?:String|Data))/i;
+
 export function classifyDangerousCommand(command) {
   const findings = [];
   const found = new Set();
@@ -117,9 +140,11 @@ export function classifyDangerousCommand(command) {
   };
 
   // A line that only prints text is not executing anything: install scripts
-  // commonly echo instructions like `echo "run: sudo systemctl ..."`. Only
-  // skip when no shell separator could chain a real command after the echo.
-  if (/^\s*(echo|printf)\b/i.test(command) && !/(\&\&|\|\||;|\||\$\(|`)/.test(command)) {
+  // commonly echo instructions like `echo "run: sudo systemctl ..."` or
+  // `echo 'install with: curl ... | sh'`. Only skip when no shell separator
+  // could chain a real command after the echo; separators inside inert
+  // quoted text do not count.
+  if (/^\s*(echo|printf)\b/i.test(command) && !/(\&\&|\|\||;|\||\$\(|`)/.test(command.replace(INERT_QUOTED_TEXT, '""'))) {
     return findings;
   }
 
@@ -127,7 +152,10 @@ export function classifyDangerousCommand(command) {
   // feeds the shell is itself a segment separator. Allow sudo/env between
   // the pipe and the shell (`curl ... | sudo bash`).
   if (
-    /\b(curl|wget|iwr|Invoke-WebRequest)\b.+\|\s*(?:sudo\s+(?:-\S+\s+)*)?(?:env\s+(?:\S+=\S*\s+)*)?(sh|bash|zsh|pwsh|powershell|iex|Invoke-Expression)\b/i.test(command) ||
+    REMOTE_PIPE_TO_SHELL.test(command) ||
+    REMOTE_PIPE_TO_INTERPRETER.test(command) ||
+    REMOTE_SUBSTITUTION.test(command) ||
+    REMOTE_POWERSHELL_EVAL.test(command) ||
     /\b(bash|sh|zsh)\s+<\s*\(\s*(curl|wget)\b/i.test(command)
   ) {
     push({

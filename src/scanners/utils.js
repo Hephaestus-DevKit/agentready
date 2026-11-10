@@ -34,9 +34,11 @@ export const SECRET_TOKEN_RULES = [
   },
   {
     id: "secret.github_token",
-    detect: /\bgh[pousr]_[A-Za-z0-9_]{30,}\b/,
-    redactPattern: /\bgh[pousr]_[A-Za-z0-9_]{8,}\b/g,
-    redactWith: (match) => `${match.slice(0, 8)}...[redacted]`,
+    // Classic/OAuth/app tokens (ghp_, gho_, ...) and fine-grained personal
+    // access tokens (github_pat_...), which are GitHub's default token type.
+    detect: /\b(?:gh[pousr]_[A-Za-z0-9_]{30,}|github_pat_[A-Za-z0-9_]{50,})\b/,
+    redactPattern: /\b(?:gh[pousr]_[A-Za-z0-9_]{8,}|github_pat_[A-Za-z0-9_]{8,})\b/g,
+    redactWith: (match) => (match.startsWith("github_pat_") ? "github_pat_...[redacted]" : `${match.slice(0, 8)}...[redacted]`),
     title: "GitHub token-like value is present",
     recommendation: "Move the token to a secret manager, rotate it, and keep it outside agent-readable files."
   },
@@ -66,9 +68,10 @@ export const SECRET_TOKEN_RULES = [
   },
   {
     id: "secret.aws_access_key",
-    detect: /\bAKIA[0-9A-Z]{16}\b/,
-    redactPattern: /\bAKIA[0-9A-Z]{16}\b/g,
-    redactWith: "AKIA...[redacted]",
+    // AKIA = long-lived access key, ASIA = temporary STS session key.
+    detect: /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/,
+    redactPattern: /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/g,
+    redactWith: (match) => `${match.slice(0, 4)}...[redacted]`,
     title: "AWS access key-like value is present",
     recommendation: "Rotate the key, remove it from the repository, and use scoped secret storage."
   },
@@ -95,6 +98,22 @@ export const SECRET_TOKEN_RULES = [
     redactWith: "xapp-...[redacted]",
     title: "Slack app-level token is present",
     recommendation: "Rotate the Slack app token and use scoped secret storage."
+  },
+  {
+    id: "secret.npm_token",
+    detect: /\bnpm_[A-Za-z0-9]{36}\b/,
+    redactPattern: /\bnpm_[A-Za-z0-9]{8,}\b/g,
+    redactWith: "npm_...[redacted]",
+    title: "npm access token is present",
+    recommendation: "Revoke the npm token, publish through trusted publishing or scoped CI secrets, and keep it out of agent-readable files."
+  },
+  {
+    id: "secret.huggingface_token",
+    detect: /\bhf_[A-Za-z0-9]{30,}\b/,
+    redactPattern: /\bhf_[A-Za-z0-9]{8,}\b/g,
+    redactWith: "hf_...[redacted]",
+    title: "Hugging Face access token is present",
+    recommendation: "Revoke the Hugging Face token and move it to scoped secret storage."
   },
   {
     id: "secret.jwt_token",

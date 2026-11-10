@@ -9,7 +9,10 @@ export function formatCommandPath(root) {
     value = `./${value}`;
   }
 
-  if (/[\s"'$`]/.test(value)) {
+  // Quote anything outside a conservative safe set: the value is printed as a
+  // copy-paste command, so `&`, `;`, `(`, `|`, `>`, `*`, `!`, `#`, or a
+  // leading `~` in a directory name must not be interpreted by the shell.
+  if (/[^A-Za-z0-9_@+=:,./-]/.test(value) || (process.platform !== "win32" && value.startsWith("~"))) {
     return quoteShellPath(value);
   }
 

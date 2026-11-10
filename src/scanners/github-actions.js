@@ -53,6 +53,7 @@ export function scanGitHubActions(relativePath, content) {
             command
           });
           findings.push(...scanGitHubActionRunCommand(relativePath, command, commandLine));
+          findings.push(...scanRunInjection(relativePath, command, commandLine));
         }
         continue;
       }
@@ -116,15 +117,16 @@ export function scanGitHubActions(relativePath, content) {
       });
     }
 
-    const writePermission = line.match(/^\s*(actions|checks|contents|deployments|issues|packages|pull-requests|statuses)\s*:\s*write(?:\s+#.*)?\s*$/);
-    if (writePermission) {
+    for (const permission of findWritePermissions(line)) {
       findings.push({
         id: "github_actions.write_permission",
         severity: "medium",
-        title: `GitHub Actions grants ${writePermission[1]} write permission`,
+        title: `GitHub Actions grants ${permission.name} write permission`,
         file: relativePath,
         line: index + 1,
-        evidence: trimmed,
+        // Block-style evidence stays the trimmed line so existing baseline
+        // fingerprints remain valid.
+        evidence: permission.evidence ?? trimmed,
         recommendation: "Use least-privilege permissions and grant write access only to jobs that require it."
       });
     }
@@ -141,7 +143,7 @@ export function scanGitHubActions(relativePath, content) {
       });
     }
 
-    if (/persist-credentials\s*:\s*true/.test(line)) {
+    if (/persist-credentials\s*:\s*["']?true["']?/.test(line)) {
       findings.push({
         id: "github_actions.persist_credentials",
         severity: "low",
@@ -210,6 +212,7 @@ export function scanGitHubActions(relativePath, content) {
           command
         });
         findings.push(...scanGitHubActionRunCommand(relativePath, command, index + 1));
+        findings.push(...scanRunInjection(relativePath, command, index + 1));
       }
     }
   }
@@ -238,6 +241,68 @@ export function scanGitHubActions(relativePath, content) {
   }));
 
   return findings;
+}
+
+const WRITE_PERMISSION_SCOPES = "actions|attestations|checks|contents|deployments|discussions|issues|packages|pages|pull-requests|repository-projects|statuses";
+const BLOCK_WRITE_PERMISSION = new RegExp(String.raw`^\s*(${WRITE_PERMISSION_SCOPES})\s*:\s*["']?write["']?(?:\s+#.*)?\s*$`);
+const FLOW_PERMISSIONS = /^\s*permissions\s*:\s*\{([^}]*)\}/;
+const FLOW_WRITE_PERMISSION = new RegExp(String.raw`(?:^|,)\s*["']?(${WRITE_PERMISSION_SCOPES})["']?\s*:\s*["']?write["']?\s*(?=,|$)`, "g");
+
+/**
+ * Write permissions declared on one line, in either block style
+ * (`contents: write`) or flow style (`permissions: { contents: write }`).
+ * Flow-style entries carry their own evidence so several on one line stay
+ * distinct findings; block-style entries leave it unset and use the line.
+ */
+function findWritePermissions(line) {
+  const block = line.match(BLOCK_WRITE_PERMISSION);
+  if (block) {
+    return [{ name: block[1] }];
+  }
+
+  const flow = line.match(FLOW_PERMISSIONS);
+  if (!flow) {
+    return [];
+  }
+  return [...flow[1].matchAll(FLOW_WRITE_PERMISSION)].map((match) => ({
+    name: match[1],
+    evidence: `${match[1]}: write`
+  }));
+}
+
+// Context values an outside contributor controls (issue/PR titles, bodies,
+// branch names, commit messages, ...), per GitHub's script-injection guidance.
+// Interpolating them into a `run:` script lets that text execute as shell.
+const UNTRUSTED_CONTEXT = new RegExp(
+  String.raw`\$\{\{\s*(?:github\.head_ref|github\.event\.(?:` +
+    [
+      String.raw`issue\.(?:title|body)`,
+      String.raw`pull_request\.(?:title|body|head\.(?:ref|label|repo\.default_branch))`,
+      String.raw`(?:comment|review|review_comment)\.body`,
+      String.raw`discussion\.(?:title|body)`,
+      String.raw`pages\.[^}\s]*\.page_name`,
+      String.raw`commits\.[^}\s]*\.(?:message|author\.(?:email|name))`,
+      String.raw`head_commit\.(?:message|author\.(?:email|name)|committer\.(?:email|name))`,
+      String.raw`workflow_run\.(?:head_branch|head_commit\.(?:message|author\.(?:email|name))|pull_requests\.[^}\s]*\.head\.(?:ref|repo\.name))`
+    ].join("|") +
+    String.raw`))\s*\}\}`
+);
+
+function scanRunInjection(relativePath, command, line) {
+  if (!UNTRUSTED_CONTEXT.test(command)) {
+    return [];
+  }
+  return [
+    {
+      id: "github_actions.script_injection",
+      severity: "high",
+      title: "Untrusted GitHub context is interpolated into a run command",
+      file: relativePath,
+      line,
+      evidence: redact(String(command).trim()),
+      recommendation: "Pass untrusted values through env: and reference them as shell variables instead of interpolating ${{ }} into the script."
+    }
+  ];
 }
 
 function pullRequestTargetFinding(relativePath, line, evidence) {

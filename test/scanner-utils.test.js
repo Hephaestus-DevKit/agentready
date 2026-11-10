@@ -22,6 +22,8 @@ const SAMPLE_TOKENS = {
   "secret.google_api_key": ["AIzaSy", "A1234567890abcdefghijklmnopqrstuv"].join(""),
   "secret.slack_token": ["xoxb", "1234567890", "1234567890123", ALPHA.slice(0, 24)].join("-"),
   "secret.slack_app_token": ["xapp", "1", "A012345", "1234567890", "abcdef123456"].join("-"),
+  "secret.npm_token": ["npm", `${ALPHA}ABCDEFGHIJ`].join("_"),
+  "secret.huggingface_token": ["hf", `${ALPHA}ABCDEFGHIJ`].join("_"),
   "secret.jwt_token": ["eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9", "eyJzdWIiOiIxMjM0NTY3ODkwIn0", "SflKxwRJSMeKKF2QT4fwpM"].join(".")
 };
 
@@ -55,6 +57,22 @@ test("redact masks JWT tokens", () => {
 test("redact keeps the GitHub token prefix for identification", () => {
   const redacted = redact(`token: ${SAMPLE_TOKENS["secret.github_token"]}`);
   assert.match(redacted, /ghp_abcd\.\.\.\[redacted\]/);
+});
+
+test("GitHub fine-grained tokens and AWS session keys are detected and redacted", () => {
+  const fineGrained = ["github", "pat", "11ABCDEFG0", `${ALPHA}${ALPHA.toUpperCase()}0123456789`].join("_");
+  const session = ["ASIA", "IOSFODNN7EXAMPLE"].join("");
+  const github = SECRET_TOKEN_RULES.find((rule) => rule.id === "secret.github_token");
+  const aws = SECRET_TOKEN_RULES.find((rule) => rule.id === "secret.aws_access_key");
+
+  assert.match(fineGrained, github.detect);
+  assert.match(session, aws.detect);
+
+  const redacted = redact(`a=${fineGrained} b=${session}`);
+  assert.match(redacted, /github_pat_\.\.\.\[redacted\]/);
+  assert.match(redacted, /ASIA\.\.\.\[redacted\]/);
+  assert.ok(!redacted.includes("IOSFODNN7EXAMPLE"));
+  assert.ok(!redacted.includes("0123456789"));
 });
 
 test("redact leaves ordinary text untouched", () => {

@@ -28,6 +28,7 @@ Usage:
                       [--max-file-size bytes]
   agentready baseline diff [path] [--baseline .agentready-baseline.json]
                            [--format text|json|markdown] [--output file] [--config file]
+                           [--ci] [--fail-on high|medium|low|info|none]
                            [--ignore-rule id] [--ignore-path pattern] [--max-file-size bytes]
   agentready baseline prune [path] [--baseline .agentready-baseline.json] [--output file]
                             [--config file] [--ignore-rule id] [--ignore-path pattern]
@@ -65,6 +66,8 @@ Examples:
   agentready badge .
 `;
 
+const KNOWN_COMMANDS = new Set(["scan", "init", "doctor", "quickstart", "list-rules", "baseline", "debt", "config", "badge"]);
+
 export async function runCli(argv) {
   const [command = "help", ...rest] = argv;
 
@@ -75,6 +78,12 @@ export async function runCli(argv) {
 
   if (command === "version" || command === "--version" || command === "-v") {
     console.log(TOOL_VERSION);
+    return;
+  }
+
+  // `agentready scan --help` should show usage, not "Unknown option: --help".
+  if (KNOWN_COMMANDS.has(command) && rest.some((arg) => arg === "--help" || arg === "-h")) {
+    console.log(HELP);
     return;
   }
 
@@ -145,7 +154,7 @@ async function handleScan(args) {
     "verbose",
     "no-color"
   ]);
-  const target = path.resolve(options.positionals[0] || process.cwd());
+  const target = resolveTarget(options);
   const format = options.format || "text";
   ensureFormat(format, ["text", "json", "markdown", "sarif"]);
 
@@ -171,7 +180,10 @@ async function handleScan(args) {
       : format === "markdown"
         ? formatMarkdown(reportResult, reportOptions)
         : format === "sarif"
-          ? formatSarif(reportResult)
+          // SARIF always carries every finding: code scanning closes alerts
+          // that disappear from an upload, so a display limit must not
+          // truncate it.
+          ? formatSarif(result)
           : formatText(reportResult, {
               quiet: options.quiet,
               verbose: options.verbose,
@@ -196,7 +208,7 @@ async function handleScan(args) {
 async function handleInit(args) {
   const options = parseOptions(args);
   rejectUnsupportedOptions(options, ["force", "dry-run", "preset", "with-ci"]);
-  const target = path.resolve(options.positionals[0] || process.cwd());
+  const target = resolveTarget(options);
   const result = await runInit(target, {
     dryRun: Boolean(options.dryRun),
     force: Boolean(options.force),
@@ -222,7 +234,7 @@ async function handleBaseline(args) {
 
   const options = parseOptions(args);
   rejectUnsupportedOptions(options, ["output", "config", "ignore-rule", "ignore-path", "max-file-size"]);
-  const target = path.resolve(options.positionals[0] || process.cwd());
+  const target = resolveTarget(options);
   const output = path.resolve(options.output || path.join(target, ".agentready-baseline.json"));
   const loaded = await loadConfig(target, options.config);
   const config = applyCliOverrides(
@@ -243,8 +255,8 @@ async function handleBaseline(args) {
 
 async function handleBaselineDiff(args) {
   const options = parseOptions(args);
-  rejectUnsupportedOptions(options, ["baseline", "config", "ignore-rule", "ignore-path", "max-file-size", "format", "output"]);
-  const target = path.resolve(options.positionals[0] || process.cwd());
+  rejectUnsupportedOptions(options, ["baseline", "config", "ignore-rule", "ignore-path", "max-file-size", "format", "output", "ci", "fail-on"]);
+  const target = resolveTarget(options);
   const format = options.format || "text";
   ensureFormat(format, ["text", "json", "markdown"]);
 
@@ -265,6 +277,12 @@ async function handleBaselineDiff(args) {
   const diff = diffBaseline(result.findings, baseline);
   const output = formatBaselineDiff(diff, format);
 
+  // --ci turns the diff into a gate: new findings at or above the fail-on
+  // threshold fail the run, so a baseline can be enforced without a full scan.
+  if (options.ci && shouldFail(diff.summary.severity.new, config.failOn)) {
+    process.exitCode = 1;
+  }
+
   if (options.output) {
     const outputPath = await writeOutputFile(options.output, output);
     console.log(`Wrote baseline diff to ${outputPath}`);
@@ -277,7 +295,7 @@ async function handleBaselineDiff(args) {
 async function handleBaselinePrune(args) {
   const options = parseOptions(args);
   rejectUnsupportedOptions(options, ["baseline", "output", "config", "ignore-rule", "ignore-path", "max-file-size"]);
-  const target = path.resolve(options.positionals[0] || process.cwd());
+  const target = resolveTarget(options);
   const loaded = await loadConfig(target, options.config);
   const config = applyCliOverrides(
     {
@@ -302,7 +320,7 @@ async function handleBaselinePrune(args) {
 async function handleDebt(args) {
   const options = parseOptions(args);
   rejectUnsupportedOptions(options, ["baseline", "format", "output", "config"]);
-  const target = path.resolve(options.positionals[0] || process.cwd());
+  const target = resolveTarget(options);
   const format = options.format || "text";
   ensureFormat(format, ["text", "json", "markdown"]);
 
@@ -335,7 +353,7 @@ async function handleDoctor(args) {
     "verbose",
     "no-color"
   ]);
-  const target = path.resolve(options.positionals[0] || process.cwd());
+  const target = resolveTarget(options);
   const reportOptions = normalizeReportOptions(options);
   const loaded = await loadConfig(target, options.config);
   const config = applyCliOverrides(loaded.config, options);
@@ -362,7 +380,7 @@ function shouldColorize(options) {
 async function handleQuickstart(args) {
   const options = parseOptions(args);
   rejectUnsupportedOptions(options, []);
-  const target = path.resolve(options.positionals[0] || process.cwd());
+  const target = resolveTarget(options);
   const result = await runQuickstart(target);
   for (const line of result.messages) {
     console.log(line);
@@ -375,7 +393,7 @@ async function handleConfig(args) {
   if (subcommand === "validate") {
     const options = parseOptions(rest);
     rejectUnsupportedOptions(options, ["config"]);
-    const target = path.resolve(options.positionals[0] || process.cwd());
+    const target = resolveTarget(options);
     const loaded = await loadConfig(target, options.config);
 
     if (loaded.warnings.length === 0) {
@@ -487,6 +505,11 @@ function parseOptions(args) {
         index += 1;
       } else {
         value = arg.slice(eqIndex + 1);
+        if (value === "") {
+          // `--fail-on=` would otherwise be silently ignored and
+          // `--max-findings=` would hide every finding.
+          throw usageError(`${name} requires a value.`);
+        }
       }
 
       if (valueOption.array) {
@@ -523,6 +546,15 @@ function readOptionValue(args, index, optionName) {
   return value;
 }
 
+// The scan/baseline/init target is a single optional path. Silently dropping
+// extra positionals would scan a different project than the caller intended.
+function resolveTarget(options) {
+  if (options.positionals.length > 1) {
+    throw usageError(`Expected at most one path but received ${options.positionals.length}: ${options.positionals.join(" ")}`);
+  }
+  return path.resolve(options.positionals[0] || process.cwd());
+}
+
 function normalizeReportOptions(options) {
   const normalized = {
     maxFindings: null,
@@ -531,11 +563,11 @@ function normalizeReportOptions(options) {
   };
 
   if (options.maxFindings !== undefined) {
-    const parsed = Number(options.maxFindings);
-    if (!Number.isInteger(parsed) || parsed < 0) {
+    // Digits only: Number() would accept "", " ", "0x10", and "1e1".
+    if (!/^\d+$/.test(String(options.maxFindings).trim())) {
       throw usageError(`--max-findings requires a non-negative integer.`);
     }
-    normalized.maxFindings = parsed;
+    normalized.maxFindings = Number(options.maxFindings);
   }
 
   if (!["severity", "category"].includes(normalized.groupBy)) {
@@ -601,7 +633,7 @@ async function writeOutputFile(output, content) {
 async function handleBadge(args) {
   const options = parseOptions(args);
   rejectUnsupportedOptions(options, ["format", "config", "baseline", "ignore-rule", "ignore-path", "max-file-size"]);
-  const target = path.resolve(options.positionals[0] || process.cwd());
+  const target = resolveTarget(options);
   const format = options.format || "text";
   ensureFormat(format, ["text", "json", "markdown"], "badge format");
 

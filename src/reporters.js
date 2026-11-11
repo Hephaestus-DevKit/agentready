@@ -567,27 +567,37 @@ function toSarifResult(finding) {
     };
   }
 
-  if (finding.file) {
-    result.locations = [
-      {
-        physicalLocation: {
-          artifactLocation: {
-            uri: toSarifUri(finding.file),
-            uriBaseId: "PROJECTROOT"
-          }
+  // GitHub code scanning rejects a whole upload when any result has no
+  // location, so project-level findings (no file) are anchored to the file
+  // the finding is about instead of being emitted without one.
+  const anchor = finding.file ? { uri: toSarifUri(finding.file), line: finding.line } : { uri: PROJECT_FINDING_ANCHORS[finding.id] || DEFAULT_PROJECT_ANCHOR, line: 1 };
+  result.locations = [
+    {
+      physicalLocation: {
+        artifactLocation: {
+          uri: anchor.uri,
+          uriBaseId: "PROJECTROOT"
         }
       }
-    ];
-
-    if (finding.line) {
-      result.locations[0].physicalLocation.region = {
-        startLine: finding.line
-      };
     }
+  ];
+
+  if (anchor.line) {
+    result.locations[0].physicalLocation.region = {
+      startLine: anchor.line
+    };
   }
 
   return result;
 }
+
+// Project-level findings describe a file that is missing, so the anchor is the
+// path where that file is expected.
+const PROJECT_FINDING_ANCHORS = {
+  "agent.missing_agents_md": "AGENTS.md",
+  "agent.missing_agentignore": ".agentignore"
+};
+const DEFAULT_PROJECT_ANCHOR = "AGENTS.md";
 
 // SARIF artifact locations are URI references: encode each path segment so
 // `#`, `%`, `?`, and spaces in file names keep their literal meaning.

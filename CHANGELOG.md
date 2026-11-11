@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- SARIF results for project-level findings (for example a missing `AGENTS.md`) now carry a location, because GitHub code scanning rejects uploads containing results without one. File-based results are unchanged.
+
 ## 1.2.0
 
 ### Added

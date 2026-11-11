@@ -231,3 +231,23 @@ test("a hand-edited baseline with non-string file fields does not crash debt", a
   assert.match(result.stdout, /Entries: 2/);
   assert.equal(typeof summarizeBaselineDebt, "function");
 });
+
+test("every SARIF result has a location, including project-level findings", async () => {
+  const root = await makeProject({ "run.sh": "sudo ls\n" });
+  const { stdout } = await runCli(["scan", root, "--format", "sarif"]);
+  const results = JSON.parse(stdout).runs[0].results;
+
+  const missingFile = results.find((result) => result.ruleId === "agent.missing_agents_md");
+  assert.ok(missingFile, "fixture must produce a project-level finding");
+  for (const result of results) {
+    assert.ok(result.locations?.length > 0, `${result.ruleId} must carry a location`);
+    assert.ok(result.locations[0].physicalLocation.artifactLocation.uri, `${result.ruleId} must carry a uri`);
+  }
+
+  assert.equal(missingFile.locations[0].physicalLocation.artifactLocation.uri, "AGENTS.md");
+  assert.equal(missingFile.locations[0].physicalLocation.region.startLine, 1);
+
+  const sudo = results.find((result) => result.ruleId === "script.dangerous_command.sudo");
+  assert.equal(sudo.locations[0].physicalLocation.artifactLocation.uri, "run.sh");
+  assert.equal(sudo.locations[0].physicalLocation.region.startLine, 1);
+});

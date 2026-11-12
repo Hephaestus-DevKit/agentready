@@ -23,6 +23,9 @@ const GRADE_TABLE = [
   { min: 0,  grade: "critical",   color: "red" }
 ];
 
+/** Highest grade a project with any high-severity finding can receive. */
+const GRADE_CAP_ON_HIGH = GRADE_TABLE.find((entry) => entry.grade === "needs-work");
+
 /**
  * Calculate an Agent Readiness Score from a list of findings.
  *
@@ -31,6 +34,7 @@ const GRADE_TABLE = [
  */
 export function calculateScore(findings) {
   const deductions = { high: 0, medium: 0, low: 0 };
+  const hasHigh = findings.some((finding) => finding.severity === "high");
 
   for (const finding of findings) {
     const points = DEDUCTION_PER_SEVERITY[finding.severity];
@@ -42,7 +46,14 @@ export function calculateScore(findings) {
   const totalDeduction = deductions.high + deductions.medium + deductions.low;
   const score = Math.max(0, 100 - totalDeduction);
 
-  const { grade, color } = GRADE_TABLE.find((entry) => score >= entry.min);
+  let { grade, color } = GRADE_TABLE.find((entry) => score >= entry.min);
+
+  // A scan with any high-severity finding reports "action required", so the
+  // badge must not call the project ready or acceptable for agent access even
+  // when the numeric score stays high (one high finding costs only 10 points).
+  if (hasHigh && score >= GRADE_CAP_ON_HIGH.min) {
+    ({ grade, color } = GRADE_CAP_ON_HIGH);
+  }
 
   return { score, grade, color, deductions };
 }

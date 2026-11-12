@@ -220,6 +220,10 @@ Markdown: ![AgentReady Score: 92](https://img.shields.io/badge/AgentReady-Score_
 | 30–49 | at-risk | Significant security gaps |
 | 0–29 | critical | Not safe for agent access |
 
+A project with any high severity finding is capped at `needs-work`, even when its
+numeric score is higher, so the badge never reads `ready` while `scan` reports
+"action required".
+
 Add the badge to your project README to show agent readiness status.
 
 ## Output Formats

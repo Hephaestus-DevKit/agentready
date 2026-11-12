@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- The Agent Readiness grade and badge colour are capped at `needs-work` (yellow) when any high severity finding exists. One high finding costs only 10 points, so a project with a leaked key previously earned a green `ready` badge while `scan` reported "action required". The numeric score is unchanged.
 - SARIF results for project-level findings (for example a missing `AGENTS.md`) now carry a location, because GitHub code scanning rejects uploads containing results without one. File-based results are unchanged.
 
 ## 1.2.0

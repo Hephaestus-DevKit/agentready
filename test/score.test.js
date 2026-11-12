@@ -60,27 +60,52 @@ test("score floors at 0, never goes negative", () => {
 
 // -- grade thresholds ---------------------------------------------------------
 
+const many = (severity, count) => Array.from({ length: count }, () => ({ severity }));
+
 test("score 90 → grade ready (lower boundary)", () => {
-  // 100 - 10 = 90 → one high finding
-  const { grade, color } = calculateScore([{ severity: "high" }]);
+  // 100 - 10 = 90 → ten low findings
+  const { score, grade, color } = calculateScore(many("low", 10));
+  assert.equal(score, 90);
   assert.equal(grade, "ready");
   assert.equal(color, "brightgreen");
 });
 
 test("score 89 → grade acceptable", () => {
-  // 100 - 10 - 1 = 89
-  const findings = [{ severity: "high" }, { severity: "low" }];
-  const { grade, color } = calculateScore(findings);
+  // 100 - 11 = 89 → eleven low findings
+  const { score, grade, color } = calculateScore(many("low", 11));
+  assert.equal(score, 89);
   assert.equal(grade, "acceptable");
   assert.equal(color, "green");
 });
 
 test("score 70 → grade acceptable (lower boundary)", () => {
-  // 100 - 30 = 70 → three high findings
-  const findings = Array.from({ length: 3 }, () => ({ severity: "high" }));
-  const { grade, color } = calculateScore(findings);
+  // 100 - 30 = 70 → seven medium and two low findings
+  const { score, grade, color } = calculateScore([...many("medium", 7), ...many("low", 2)]);
+  assert.equal(score, 70);
   assert.equal(grade, "acceptable");
   assert.equal(color, "green");
+});
+
+test("any high finding caps the grade at needs-work without changing the score", () => {
+  // One high finding scores 90, but the scan reports "action required".
+  for (const findings of [many("high", 1), [...many("high", 1), ...many("low", 1)], many("high", 3)]) {
+    const { score, grade, color } = calculateScore(findings);
+    assert.ok(score >= 70, `score ${score} should stay numeric`);
+    assert.equal(grade, "needs-work");
+    assert.equal(color, "yellow");
+  }
+  assert.equal(calculateScore(many("high", 1)).score, 90);
+});
+
+test("the high-finding cap never raises a lower grade", () => {
+  assert.equal(calculateScore(many("high", 5)).grade, "needs-work");
+  assert.equal(calculateScore(many("high", 6)).grade, "at-risk");
+  assert.equal(calculateScore(many("high", 8)).grade, "critical");
+});
+
+test("without high findings the grade follows the score alone", () => {
+  assert.equal(calculateScore(many("medium", 1)).grade, "ready");
+  assert.equal(calculateScore([]).grade, "ready");
 });
 
 test("score 69 → grade needs-work", () => {

@@ -31,31 +31,43 @@ export function summarizeSeverities(findings) {
 export function sortFindings(findings) {
   const rank = new Map(SEVERITIES.map((severity, index) => [severity, index]));
   return [...findings].sort((left, right) => {
-    const severityDelta = rank.get(left.severity) - rank.get(right.severity);
+    const leftRank = rank.get(left.severity) ?? SEVERITIES.length;
+    const rightRank = rank.get(right.severity) ?? SEVERITIES.length;
+    const severityDelta = leftRank - rightRank;
     if (severityDelta !== 0) {
       return severityDelta;
     }
-    const fileDelta = String(left.file || "").localeCompare(String(right.file || ""));
-    if (fileDelta !== 0) {
-      return fileDelta;
+    const leftFile = String(left.file || "");
+    const rightFile = String(right.file || "");
+    if (leftFile !== rightFile) {
+      return leftFile < rightFile ? -1 : 1;
     }
     return (left.line || 0) - (right.line || 0);
   });
 }
 
-// C0/C1 control characters except tab. Scanned repositories control finding
-// titles, evidence, and file names, so printing them raw would let a hostile
-// repo inject terminal escape sequences (screen clears, title changes).
-const CONTROL_CHARS = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g;
+// C0/C1 control characters (except tab) plus Unicode bidirectional override and
+// isolate marks (Trojan Source). Scanned repositories control finding titles,
+// evidence, and file names, so printing them raw would let a hostile repo
+// inject terminal escape sequences or visually spoof paths and snippets.
+const CONTROL_CHARS = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
 const LINE_BREAKS = /\r\n|[\r\n\u2028\u2029]/g;
 
 /**
  * Remove control characters so repository-controlled text is safe to print to
  * a terminal. Newlines are kept; callers that need a single line should use
- * escapeMarkdown or collapse them first.
+ * stripSingleLine or escapeMarkdown.
  */
 export function stripControlChars(value) {
   return String(value).replace(CONTROL_CHARS, "");
+}
+
+/**
+ * Remove control characters and collapse line breaks to spaces so untrusted
+ * values cannot break out of single-line text report fields.
+ */
+export function stripSingleLine(value) {
+  return stripControlChars(String(value).replace(LINE_BREAKS, " "));
 }
 
 /**
@@ -65,8 +77,7 @@ export function stripControlChars(value) {
  * a heading.
  */
 export function escapeMarkdown(value) {
-  return stripControlChars(String(value).replace(LINE_BREAKS, " "))
-    .replace(/[\\`<>[\]|]/g, "\\$&");
+  return stripSingleLine(value).replace(/[\\`<>[\]|]/g, "\\$&");
 }
 
 /**
@@ -74,8 +85,13 @@ export function escapeMarkdown(value) {
  * one backtick longer than the longest backtick run inside the value.
  */
 export function markdownCode(value) {
-  const text = stripControlChars(String(value).replace(LINE_BREAKS, " "));
-  const longestRun = Math.max(0, ...(text.match(/`+/g) || []).map((run) => run.length));
+  const text = stripSingleLine(value);
+  let longestRun = 0;
+  for (const [run] of text.matchAll(/`+/g)) {
+    if (run.length > longestRun) {
+      longestRun = run.length;
+    }
+  }
   const fence = "`".repeat(longestRun + 1);
   const padding = text.startsWith("`") || text.endsWith("`") ? " " : "";
   return `${fence}${padding}${text}${padding}${fence}`;

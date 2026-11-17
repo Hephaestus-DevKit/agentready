@@ -55,6 +55,7 @@ runs:
   using: composite
   steps:
     - name: Run AgentReady
+      id: scan
       shell: bash
       env:
         AGENTREADY_INPUT_PATH: ${{ inputs.path }}
@@ -116,10 +117,16 @@ runs:
         fi
 
         cli_path="$GITHUB_ACTION_PATH/bin/agentready.js"
-        node "$cli_path" version
-        node "$cli_path" "${args[@]}"
+        echo "AgentReady $(node "$cli_path" version)" >&2
+        status=0
+        node "$cli_path" "${args[@]}" || status=$?
+        if [ "$upload_sarif" = "true" ] && [ "$status" -le 1 ] && [ -s "$AGENTREADY_INPUT_OUTPUT" ]; then
+          echo "sarif-ready=true" >> "$GITHUB_OUTPUT"
+        fi
+        exit "$status"
     - name: Upload AgentReady SARIF
-      if: ${{ !cancelled() && (inputs.upload-sarif == 'true' || inputs.upload-sarif == '1') && inputs.format == 'sarif' && inputs.output != '' }}
+      if: ${{ !cancelled() && (inputs.upload-sarif == 'true' || inputs.upload-sarif == '1') && inputs.format == 'sarif' && inputs.output != '' && steps.scan.outputs.sarif-ready == 'true' }}
       uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
       with:
         sarif_file: ${{ inputs.output }}
+        checkout_path: ${{ inputs.path }}

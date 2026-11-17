@@ -40,7 +40,7 @@ jobs:
           node - <<'NODE'
           const { execSync } = require("node:child_process");
           const version = execSync("npm --version", { encoding: "utf8" }).trim();
-          const [major, minor, patch] = version.split(".").map(Number);
+          const [major, minor, patch] = version.split("-")[0].split(".").map(Number);
           if (
             major < 11 ||
             (major === 11 && minor < 5) ||

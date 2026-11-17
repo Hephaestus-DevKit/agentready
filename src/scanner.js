@@ -35,6 +35,9 @@ export async function scanProject(root, options = {}) {
   let filesScanned = 0;
 
   findings.push(...scanProjectLevel(root));
+  for (const sensitiveFile of collected.oversizedSensitiveFiles) {
+    findings.push(...scanSensitiveFileName(sensitiveFile.relativePath, sensitiveFile.basename));
+  }
 
   const BATCH_SIZE = 32;
   for (let i = 0; i < files.length; i += BATCH_SIZE) {
@@ -79,6 +82,7 @@ export async function scanProject(root, options = {}) {
 
 async function collectFiles(root, config) {
   const files = [];
+  const oversizedSensitiveFiles = [];
   const skipped = {
     ignoredPath: 0,
     ignoredDirectory: 0,
@@ -93,7 +97,10 @@ async function collectFiles(root, config) {
     let entries;
     try {
       entries = await readdir(current, { withFileTypes: true });
-    } catch {
+    } catch (error) {
+      if (error?.code === "EMFILE" || error?.code === "ENFILE") {
+        throw error;
+      }
       skipped.unreadableDirectory += 1;
       return;
     }
@@ -104,7 +111,7 @@ async function collectFiles(root, config) {
       const fullPath = path.join(current, entry.name);
       const relativePath = toRelative(root, fullPath);
 
-      if (matchesAnyPath(config.ignorePaths || [], relativePath)) {
+      if (matchesAnyPath(config.ignorePaths || [], relativePath, { isDirectory: entry.isDirectory() })) {
         skipped.ignoredPath += 1;
         continue;
       }
@@ -128,17 +135,32 @@ async function collectFiles(root, config) {
         files.push(fullPath);
       } else {
         skipped[textCheck.reason] += 1;
+        if (textCheck.reason === "oversized" && textCheck.sensitive) {
+          oversizedSensitiveFiles.push({ relativePath, basename: entry.name });
+        }
       }
     }
 
-    await Promise.all(subdirs.map((dir) => walk(dir)));
+    const WALK_CONCURRENCY = 16;
+    for (let index = 0; index < subdirs.length; index += WALK_CONCURRENCY) {
+      await Promise.all(subdirs.slice(index, index + WALK_CONCURRENCY).map((dir) => walk(dir)));
+    }
   }
 
   await walk(root);
   // Directory subtrees are walked concurrently, so collection order depends on
-  // fs latency; sort to keep findings and reports reproducible across runs.
-  files.sort();
-  return { files, skipped };
+  // fs latency; sort by POSIX relative path so findings order stays identical
+  // across runs and across Windows/POSIX path separators.
+  const compareByRelative = (left, right) => {
+    const leftRel = toRelative(root, left);
+    const rightRel = toRelative(root, right);
+    return leftRel < rightRel ? -1 : leftRel > rightRel ? 1 : 0;
+  };
+  files.sort(compareByRelative);
+  oversizedSensitiveFiles.sort((left, right) =>
+    left.relativePath < right.relativePath ? -1 : left.relativePath > right.relativePath ? 1 : 0
+  );
+  return { files, oversizedSensitiveFiles, skipped };
 }
 
 async function scanFile(root, filePath) {
@@ -179,19 +201,25 @@ async function scanFile(root, filePath) {
 async function classifyTextFile(filePath, relativePath, config) {
   const extension = path.extname(filePath).toLowerCase();
   const basename = path.basename(filePath);
+  const sensitive = isSensitivePath(relativePath, basename);
 
   let details;
   try {
     details = await stat(filePath);
-  } catch {
+  } catch (error) {
+    if (error?.code === "EMFILE" || error?.code === "ENFILE") {
+      throw error;
+    }
     return { ok: false, reason: "unreadableFile" };
   }
 
   if (details.size > (config.maxFileBytes ?? MAX_FILE_BYTES)) {
-    return { ok: false, reason: "oversized" };
+    // Large key stores (.p12) and database dumps (backups/*.sql) still deserve
+    // the sensitive-filename finding without reading megabytes into memory.
+    return { ok: false, reason: "oversized", sensitive };
   }
 
-  if (isSensitivePath(relativePath, basename)) {
+  if (sensitive) {
     return { ok: true };
   }
 
@@ -219,9 +247,10 @@ function decodeTextBuffer(buffer) {
 }
 
 function decodeUtf16Be(buffer) {
-  const swapped = Buffer.allocUnsafe(buffer.length);
-  for (let index = 0; index < buffer.length; index += 2) {
-    swapped[index] = buffer[index + 1] ?? 0;
+  const evenLength = buffer.length - (buffer.length % 2);
+  const swapped = Buffer.allocUnsafe(evenLength);
+  for (let index = 0; index < evenLength; index += 2) {
+    swapped[index] = buffer[index + 1];
     swapped[index + 1] = buffer[index];
   }
   return swapped.toString("utf16le");
@@ -241,6 +270,15 @@ function isBinaryBuffer(buffer) {
 }
 
 function hasTextByteOrderMark(buffer, bytesRead) {
+  // Reject 4-byte UTF-32 BOMs (`FF FE 00 00` / `00 00 FE FF`) so binary or
+  // UTF-32 files are not misdecoded as UTF-16LE.
+  if (
+    bytesRead >= 4 &&
+    ((buffer[0] === 0xff && buffer[1] === 0xfe && buffer[2] === 0x00 && buffer[3] === 0x00) ||
+      (buffer[0] === 0x00 && buffer[1] === 0x00 && buffer[2] === 0xfe && buffer[3] === 0xff))
+  ) {
+    return false;
+  }
   if (bytesRead >= 2 && ((buffer[0] === 0xff && buffer[1] === 0xfe) || (buffer[0] === 0xfe && buffer[1] === 0xff))) {
     return true;
   }
@@ -282,8 +320,7 @@ function dedupeFindings(findings) {
   const deduped = [];
 
   for (const finding of findings) {
-    // Use unit separator (\x1f) to avoid collisions with pipe chars in paths
-    const key = [finding.id, finding.file, finding.line, finding.evidence].join("\x1f");
+    const key = JSON.stringify([finding.id, finding.file, finding.line, finding.evidence, finding.title]);
     if (seen.has(key)) {
       continue;
     }

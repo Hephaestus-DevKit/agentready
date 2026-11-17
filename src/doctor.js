@@ -1,6 +1,8 @@
 import { existsSync } from "node:fs";
 import { access, constants as fsConstants } from "node:fs/promises";
 import path from "node:path";
+import { applyBaseline } from "./baseline.js";
+import { DEFAULT_CONFIG, applyFindingConfig } from "./config.js";
 import { scanProject } from "./scanner.js";
 import { addFingerprints } from "./fingerprint.js";
 import { enrichFindings } from "./rules.js";
@@ -8,7 +10,8 @@ import { nodeMajor, summarizeSeverities } from "./utils.js";
 import { TOOL_VERSION } from "./version.js";
 
 export async function runDoctor(root, options = {}) {
-  const result = await scanProject(root, options);
+  const config = options.config || DEFAULT_CONFIG;
+  const result = await scanProject(root, { ...options, baseline: null });
   const checks = [];
   const gitRoot = findGitRoot(root);
   const writable = await isWritable(root);
@@ -43,9 +46,10 @@ export async function runDoctor(root, options = {}) {
     recommendation: "Write access is required for agentready init and report output."
   });
 
-  // Scan findings are already enriched and fingerprinted by scanProject;
-  // only the doctor's own checks need processing before merging.
-  const findings = [...addFingerprints(enrichFindings(checks)), ...result.findings];
+  // Apply config overrides/ignores to doctor checks too so ignoreRules,
+  // severityOverrides, and baselines treat doctor.* like any other catalog rule.
+  const configuredChecks = addFingerprints(enrichFindings(applyFindingConfig(checks, config)));
+  const baselineResult = applyBaseline([...configuredChecks, ...result.findings], options.baseline || null);
 
   return {
     schemaVersion: "1",
@@ -57,9 +61,9 @@ export async function runDoctor(root, options = {}) {
     filesSkipped: result.filesSkipped,
     config: result.config,
     configWarnings: result.configWarnings,
-    baseline: result.baseline,
-    findings,
-    summary: summarizeSeverities(findings)
+    baseline: baselineResult.summary,
+    findings: baselineResult.findings,
+    summary: summarizeSeverities(baselineResult.findings)
   };
 }
 

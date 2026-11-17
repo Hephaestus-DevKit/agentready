@@ -1,8 +1,9 @@
+import { existsSync, statSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { diffBaseline, loadBaseline, loadBaselineFile, summarizeBaselineDebt, writeBaseline, writePrunedBaseline } from "./baseline.js";
 import { FAIL_ON_VALUES, applyCliOverrides, loadConfig, shouldFail } from "./config.js";
-import { usageError } from "./errors.js";
+import { AgentReadyError, usageError } from "./errors.js";
 import { runDoctor } from "./doctor.js";
 import { runInit } from "./init.js";
 import { runQuickstart } from "./onboarding.js";
@@ -38,6 +39,7 @@ Usage:
   agentready init [path] [--force] [--dry-run] [--preset balanced|strict|legacy] [--with-ci]
   agentready quickstart [path]
   agentready doctor [path] [--config file] [--baseline file]
+                    [--ignore-rule id] [--ignore-path pattern]
                     [--max-file-size bytes]
                     [--max-findings count] [--summary-only] [--group-by severity|category]
                     [--quiet] [--verbose] [--no-color]
@@ -66,7 +68,7 @@ Examples:
   agentready badge .
 `;
 
-const KNOWN_COMMANDS = new Set(["scan", "init", "doctor", "quickstart", "list-rules", "baseline", "debt", "config", "badge"]);
+const KNOWN_COMMANDS = new Set(["scan", "init", "doctor", "quickstart", "list-rules", "baseline", "debt", "config", "badge", "version"]);
 
 export async function runCli(argv) {
   const [command = "help", ...rest] = argv;
@@ -76,14 +78,14 @@ export async function runCli(argv) {
     return;
   }
 
-  if (command === "version" || command === "--version" || command === "-v") {
-    console.log(TOOL_VERSION);
-    return;
-  }
-
   // `agentready scan --help` should show usage, not "Unknown option: --help".
   if (KNOWN_COMMANDS.has(command) && rest.some((arg) => arg === "--help" || arg === "-h")) {
     console.log(HELP);
+    return;
+  }
+
+  if (command === "version" || command === "--version" || command === "-v") {
+    console.log(TOOL_VERSION);
     return;
   }
 
@@ -321,6 +323,7 @@ async function handleDebt(args) {
   const options = parseOptions(args);
   rejectUnsupportedOptions(options, ["baseline", "format", "output", "config"]);
   const target = resolveTarget(options);
+  ensureDirectoryTarget(target, "Debt");
   const format = options.format || "text";
   ensureFormat(format, ["text", "json", "markdown"]);
 
@@ -394,6 +397,7 @@ async function handleConfig(args) {
     const options = parseOptions(rest);
     rejectUnsupportedOptions(options, ["config"]);
     const target = resolveTarget(options);
+    ensureDirectoryTarget(target, "Config", options.positionals[0]);
     const loaded = await loadConfig(target, options.config);
 
     if (loaded.warnings.length === 0) {
@@ -415,6 +419,9 @@ async function handleConfig(args) {
 async function handleListRules(args) {
   const options = parseOptions(args);
   rejectUnsupportedOptions(options, ["format", "category", "severity"]);
+  if (options.positionals.length > 0) {
+    throw usageError(`Unexpected positional argument(s) for list-rules: ${options.positionals.join(" ")}. Use --category or --severity.`);
+  }
   const format = options.format || "text";
   ensureFormat(format, ["text", "json", "markdown"]);
 
@@ -492,6 +499,10 @@ function parseOptions(args) {
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
+    if (arg === "--") {
+      options.positionals.push(...args.slice(index + 1));
+      break;
+    }
     // Only long options support the --name=value form; "-o" and positionals
     // that happen to contain "=" are matched literally.
     const eqIndex = arg.startsWith("--") ? arg.indexOf("=") : -1;
@@ -539,7 +550,14 @@ function parseOptions(args) {
 function readOptionValue(args, index, optionName) {
   const value = args[index + 1];
 
-  if (value === undefined || value.startsWith("--")) {
+  if (
+    value === undefined ||
+    value.startsWith("--") ||
+    VALUE_OPTIONS.has(value) ||
+    BOOLEAN_OPTIONS.has(value) ||
+    value === "-h" ||
+    value === "-v"
+  ) {
     throw usageError(`${optionName} requires a value.`);
   }
 
@@ -553,6 +571,19 @@ function resolveTarget(options) {
     throw usageError(`Expected at most one path but received ${options.positionals.length}: ${options.positionals.join(" ")}`);
   }
   return path.resolve(options.positionals[0] || process.cwd());
+}
+
+function ensureDirectoryTarget(target, label, rawArg = null) {
+  if (!existsSync(target)) {
+    throw usageError(`${label} target does not exist: ${target}`);
+  }
+  if (!statSync(target).isDirectory()) {
+    const hint =
+      label === "Config" && rawArg
+        ? `\nPass a project directory, or use --config ${rawArg} to validate a specific config file.`
+        : "";
+    throw usageError(`${label} target must be a directory: ${target}${hint}`);
+  }
 }
 
 function normalizeReportOptions(options) {
@@ -625,8 +656,12 @@ function ensureFormat(format, allowedFormats, label = "format") {
 
 async function writeOutputFile(output, content) {
   const outputPath = path.resolve(output);
-  await mkdir(path.dirname(outputPath), { recursive: true });
-  await writeFile(outputPath, content, "utf8");
+  try {
+    await mkdir(path.dirname(outputPath), { recursive: true });
+    await writeFile(outputPath, content, "utf8");
+  } catch (error) {
+    throw new AgentReadyError(`Failed to write output file ${outputPath}: ${error.message}`, 4);
+  }
   return outputPath;
 }
 

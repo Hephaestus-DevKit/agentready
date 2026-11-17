@@ -35,10 +35,16 @@ export async function loadConfig(root, explicitPath = null) {
     throw configError(`Config file not found: ${configPath}\nRun agentready init . to create a starter configuration.`);
   }
 
-  const raw = await readFile(configPath, "utf8");
+  let raw;
+  try {
+    raw = await readFile(configPath, "utf8");
+  } catch (error) {
+    throw configError(`Config file could not be read: ${configPath}\n${error.message}`);
+  }
+
   let parsed;
   try {
-    parsed = JSON.parse(raw);
+    parsed = JSON.parse(raw.replace(/^\uFEFF/, ""));
   } catch (error) {
     throw configError(`Config file is not valid JSON: ${configPath}\n${error.message}`);
   }
@@ -108,8 +114,8 @@ export function shouldFail(summary, failOn = DEFAULT_CONFIG.failOn) {
   return SEVERITIES.slice(0, thresholdIndex + 1).some((severity) => summary[severity] > 0);
 }
 
-export function matchesAnyPath(patterns, relativePath) {
-  return patterns.some((pattern) => matchPath(pattern, relativePath));
+export function matchesAnyPath(patterns, relativePath, options = {}) {
+  return patterns.some((pattern) => matchPath(pattern, relativePath, options));
 }
 
 function findConfigPath(root) {
@@ -140,6 +146,21 @@ function normalizeConfig(input) {
     }
   }
 
+  if (input.$schema !== undefined && typeof input.$schema !== "string") {
+    warnings.push("$schema must be a string and was ignored.");
+  }
+
+  let failOn = DEFAULT_CONFIG.failOn;
+  if (input.failOn !== undefined) {
+    if (typeof input.failOn !== "string") {
+      warnings.push(`Invalid failOn value "${String(input.failOn)}" was ignored.`);
+    } else if (!FAIL_ON_VALUES.includes(input.failOn)) {
+      warnings.push(`Invalid failOn value "${input.failOn}" was ignored.`);
+    } else {
+      failOn = input.failOn;
+    }
+  }
+
   const config = {
     ...DEFAULT_CONFIG,
     baselinePath: normalizeOptionalString(input.baselinePath, "baselinePath", warnings),
@@ -147,13 +168,8 @@ function normalizeConfig(input) {
     ignoreRules: normalizeStringArray(input.ignoreRules, "ignoreRules", warnings),
     severityOverrides: normalizeSeverityOverrides(input.severityOverrides, warnings),
     maxFileBytes: normalizePositiveInteger(input.maxFileBytes, "maxFileBytes", warnings, DEFAULT_CONFIG.maxFileBytes),
-    failOn: typeof input.failOn === "string" ? input.failOn : DEFAULT_CONFIG.failOn
+    failOn
   };
-
-  if (!FAIL_ON_VALUES.includes(config.failOn)) {
-    warnings.push(`Invalid failOn value "${config.failOn}" was ignored.`);
-    config.failOn = DEFAULT_CONFIG.failOn;
-  }
 
   for (const rule of config.ignoreRules) {
     if (!KNOWN_RULE_IDS.has(rule)) {
@@ -227,7 +243,8 @@ function normalizeOptionalString(value, field, warnings) {
     return null;
   }
 
-  return value;
+  const trimmed = value.trim();
+  return trimmed || null;
 }
 
 function normalizeSeverityOverrides(value, warnings) {
@@ -256,11 +273,20 @@ function normalizeSeverityOverrides(value, warnings) {
 // compiled glob regexes per normalized pattern instead of recompiling each call.
 const globRegExpCache = new Map();
 
-function matchPath(pattern, relativePath) {
-  const normalizedPattern = normalizePath(pattern);
+function matchPath(pattern, relativePath, options = {}) {
+  const rawPattern = String(pattern).trim().replaceAll("\\", "/");
+  const directoryOnly = /\/+$/.test(rawPattern);
+  const normalizedPattern = normalizePath(rawPattern);
   const normalizedPath = normalizePath(relativePath);
 
-  if (!normalizedPattern) {
+  if (!normalizedPattern || !normalizedPath) {
+    return false;
+  }
+
+  // A trailing slash (`secrets/`) means directory-only: match the directory
+  // entry itself during walk() or anything underneath it, never a regular file
+  // that happens to share the directory's name.
+  if (directoryOnly && options.isDirectory === false && normalizedPath === normalizedPattern) {
     return false;
   }
 
@@ -268,28 +294,154 @@ function matchPath(pattern, relativePath) {
     return normalizedPath === normalizedPattern || normalizedPath.startsWith(`${normalizedPattern}/`);
   }
 
-  let compiled = globRegExpCache.get(normalizedPattern);
-  if (!compiled) {
-    compiled = globToRegExp(normalizedPattern);
-    globRegExpCache.set(normalizedPattern, compiled);
+  // In walk(), a directory `fixtures` should be skipped immediately when
+  // `fixtures/**` is configured, without reading and discarding every child.
+  if (options.isDirectory === true && normalizedPattern.endsWith("/**")) {
+    const dirPrefix = normalizedPattern.slice(0, -3);
+    if (!dirPrefix.includes("*") && !dirPrefix.includes("?") && normalizedPath === dirPrefix) {
+      return true;
+    }
   }
-  return compiled.test(normalizedPath);
+
+  const cacheKey = `${directoryOnly ? "d:" : "f:"}${normalizedPattern}`;
+  let matcher = globRegExpCache.get(cacheKey);
+  if (!matcher) {
+    matcher = compileGlobMatcher(normalizedPattern, directoryOnly);
+    globRegExpCache.set(cacheKey, matcher);
+  }
+  return matcher(normalizedPath);
 }
 
 function normalizePath(value) {
-  return String(value).trim().replaceAll("\\", "/").replace(/^\.\/+/, "").replace(/\/+$/, "");
+  return String(value).trim().replaceAll("\\", "/").replace(/^(?:\.\/+|\/+)/, "").replace(/\/+$/, "");
 }
 
-function globToRegExp(pattern) {
+function collapseGlobWildcards(rawPattern) {
+  return rawPattern
+    .replace(/\*{3,}/g, "**")
+    .replace(/(?:\*\*\/){2,}/g, "**/")
+    .replace(/(?:\/\*\*){2,}/g, "/**");
+}
+
+function compileGlobMatcher(rawPattern, directoryOnly = false) {
+  const pattern = collapseGlobWildcards(rawPattern);
+  const starCount = (pattern.match(/\*/g) || []).length;
+  // Multi-wildcard patterns from untrusted `.agentready.json` files can make a
+  // backtracking RegExp take exponential time; evaluate them with an O(P * N)
+  // token automaton instead.
+  if (starCount > 2) {
+    const tokens = tokenizeGlob(pattern, directoryOnly);
+    return (candidate) => matchGlobTokens(tokens, candidate);
+  }
+  const compiled = globToRegExp(pattern, directoryOnly);
+  return (candidate) => compiled.test(candidate);
+}
+
+function tokenizeGlob(pattern, directoryOnly) {
+  const tokens = [];
+  for (let index = 0; index < pattern.length; index += 1) {
+    const char = pattern[index];
+    const next = pattern[index + 1];
+    const prev = index > 0 ? pattern[index - 1] : "/";
+
+    if (char === "*" && next === "*") {
+      if (prev === "/" && pattern[index + 2] === "/") {
+        tokens.push({ type: "globstarSlash" });
+        index += 2;
+        continue;
+      }
+      tokens.push({ type: "any" });
+      index += 1;
+      continue;
+    }
+    if (char === "*") {
+      tokens.push({ type: "star" });
+      continue;
+    }
+    if (char === "?") {
+      tokens.push({ type: "qmark" });
+      continue;
+    }
+    tokens.push({ type: "char", value: char });
+  }
+  if (directoryOnly) {
+    tokens.push({ type: "dirTail" });
+  }
+  return tokens;
+}
+
+function matchGlobTokens(tokens, candidate) {
+  const length = candidate.length;
+  let reachable = new Uint8Array(length + 1);
+  reachable[0] = 1;
+
+  for (const token of tokens) {
+    const next = new Uint8Array(length + 1);
+    if (token.type === "char") {
+      for (let j = 0; j < length; j += 1) {
+        if (reachable[j] && candidate[j] === token.value) {
+          next[j + 1] = 1;
+        }
+      }
+    } else if (token.type === "qmark") {
+      for (let j = 0; j < length; j += 1) {
+        if (reachable[j] && candidate[j] !== "/") {
+          next[j + 1] = 1;
+        }
+      }
+    } else if (token.type === "star") {
+      for (let j = 0; j <= length; j += 1) {
+        if (reachable[j] || (j > 0 && next[j - 1] && candidate[j - 1] !== "/")) {
+          next[j] = 1;
+        }
+      }
+    } else if (token.type === "any") {
+      const first = reachable.indexOf(1);
+      if (first !== -1) {
+        next.fill(1, first);
+      }
+    } else if (token.type === "globstarSlash") {
+      const first = reachable.indexOf(1);
+      for (let j = 0; j <= length; j += 1) {
+        if (reachable[j]) {
+          next[j] = 1;
+        }
+        if (first !== -1 && j > first && candidate[j - 1] === "/") {
+          // `(?:.+/)?` requires at least one character before the slash (`j - 1 > first`).
+          if (j - 1 > first) {
+            next[j] = 1;
+          }
+        }
+      }
+    } else if (token.type === "dirTail") {
+      if (reachable[length]) {
+        next[length] = 1;
+      } else {
+        for (let j = 0; j < length; j += 1) {
+          if (reachable[j] && candidate[j] === "/") {
+            next[length] = 1;
+            break;
+          }
+        }
+      }
+    }
+    reachable = next;
+  }
+
+  return reachable[length] === 1;
+}
+
+function globToRegExp(pattern, directoryOnly = false) {
   let source = "";
 
   for (let index = 0; index < pattern.length; index += 1) {
     const char = pattern[index];
     const next = pattern[index + 1];
+    const prev = index > 0 ? pattern[index - 1] : "/";
 
     if (char === "*" && next === "*") {
-      if (pattern[index + 2] === "/") {
-        source += "(?:.*/)?";
+      if (prev === "/" && pattern[index + 2] === "/") {
+        source += "(?:.+/)?";
         index += 2;
         continue;
       }
@@ -309,6 +461,10 @@ function globToRegExp(pattern) {
     }
 
     source += escapeRegExp(char);
+  }
+
+  if (directoryOnly) {
+    return new RegExp(`^(?:${source})(?:$|/.*)`);
   }
 
   return new RegExp(`^${source}$`);

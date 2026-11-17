@@ -1,5 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Hephaestus-DevKit/agentready/main/schema/agentready.schema.json",
   "title": "AgentReady configuration",
   "type": "object",
   "additionalProperties": false,
@@ -22,7 +23,8 @@
     "ignorePaths": {
       "type": "array",
       "items": {
-        "type": "string"
+        "type": "string",
+        "minLength": 1
       },
       "default": [],
       "description": "Path patterns excluded from scanning. Use sparingly for reviewed paths."
@@ -30,7 +32,8 @@
     "ignoreRules": {
       "type": "array",
       "items": {
-        "type": "string"
+        "type": "string",
+        "minLength": 1
       },
       "default": [],
       "description": "Rule ids hidden from active scan results after review."

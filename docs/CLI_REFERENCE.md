@@ -20,10 +20,10 @@ agentready version
 ## Exit Codes
 
 - `0`: command completed and no CI failure threshold was reached
-- `1`: scan completed and findings met the configured `failOn` threshold
+- `1`: `--ci` mode completed and findings met the configured `failOn` threshold
 - `2`: CLI usage or argument error
 - `3`: configuration or baseline file error, or `config validate` warnings
-- `4`: unexpected runtime error
+- `4`: unexpected runtime error or file write failure
 
 ## stdout and stderr
 
@@ -141,6 +141,8 @@ baselines.
 agentready doctor .
 agentready doctor . --config .agentready.json
 agentready doctor . --baseline .agentready-baseline.json
+agentready doctor . --ignore-rule doctor.git
+agentready doctor . --ignore-path "fixtures/**"
 agentready doctor . --max-file-size 1048576
 agentready doctor . --max-findings 25
 agentready doctor . --summary-only

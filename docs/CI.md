@@ -125,10 +125,12 @@ agentready scan . --ci --fail-on medium
 - `group-by`: `severity` or `category` for text and Markdown reports
 - `upload-sarif`: set to `true` or `1` to upload a SARIF output file to GitHub code scanning
 
-When `upload-sarif` is enabled, the composite action attempts the SARIF upload
-even if the scan reaches the CI failure threshold, unless the job was cancelled.
-The job still fails when the configured threshold is met. The action fails early
-if `upload-sarif` is enabled without `format: sarif` and an `output` path.
+When `upload-sarif` is enabled, the composite action uploads the SARIF report
+when the scan completes (exit code `0` or `1`) and skips the upload if the job
+was cancelled or failed earlier with a CLI/configuration error before writing a
+report. The job still fails when the configured threshold is met. The action
+fails early if `upload-sarif` is enabled without `format: sarif` and an `output`
+path.
 
 ## Configuration File
 

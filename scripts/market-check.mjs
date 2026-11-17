@@ -130,7 +130,11 @@ function safeRemoveTempDir(tempRoot) {
 function checkMarkdownLinks() {
   const failures = [];
   for (const file of publicFiles().filter((item) => item.endsWith(".md"))) {
-    const content = readFileSync(file, "utf8");
+    // Strip fenced and inline code spans before scanning Markdown links so
+    // code examples containing `[label](target)` are not treated as links.
+    const content = readFileSync(file, "utf8")
+      .replace(/```[\s\S]*?```/g, "")
+      .replace(/`[^`\r\n]+`/g, "");
     const linkPattern = /\[[^\]]+\]\((?!https?:|mailto:|#)([^)]+)\)/g;
     for (const match of content.matchAll(linkPattern)) {
       const rawTarget = match[1].split("#")[0];

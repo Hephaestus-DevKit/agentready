@@ -23,11 +23,14 @@ export function createLineFinder(content) {
  * reports. `detect` is the strict finding trigger; `redactPattern` is looser
  * (shorter tails) so truncated or wrapped tokens still get masked.
  */
+const PRIVATE_KEY_SINGLE_LINE_REDACT =
+  /-----BEGIN (?:(?:RSA|EC|OPENSSH|DSA|PGP|ENCRYPTED) )?PRIVATE KEY-----(?=[^\r\n]*[A-Za-z0-9+/=]{8})[^\r\n]+/g;
+
 export const SECRET_TOKEN_RULES = [
   {
     id: "secret.private_key",
-    detect: /-----BEGIN (?:RSA |EC |OPENSSH |DSA |PGP )?PRIVATE KEY-----/,
-    redactPattern: /-----BEGIN (?:RSA |EC |OPENSSH |DSA |PGP )?PRIVATE KEY-----[\s\S]*?-----END (?:RSA |EC |OPENSSH |DSA |PGP )?PRIVATE KEY-----/g,
+    detect: /-----BEGIN (?:(?:RSA|EC|OPENSSH|DSA|PGP|ENCRYPTED) )?PRIVATE KEY-----/,
+    redactPattern: /-----BEGIN (?:(?:RSA|EC|OPENSSH|DSA|PGP|ENCRYPTED) )?PRIVATE KEY-----[\s\S]*?-----END (?:(?:RSA|EC|OPENSSH|DSA|PGP|ENCRYPTED) )?PRIVATE KEY-----/g,
     redactWith: "-----BEGIN PRIVATE KEY-----...[redacted]-----END PRIVATE KEY-----",
     title: "Private key material is present",
     recommendation: "Remove private keys from the repository and rotate any exposed credentials."
@@ -93,7 +96,7 @@ export const SECRET_TOKEN_RULES = [
   },
   {
     id: "secret.slack_app_token",
-    detect: /\bxapp-[0-9]-[A-Za-z0-9]+-[0-9]+-[A-Za-z0-9]+\b/,
+    detect: /\bxapp-[0-9]-[A-Za-z0-9]{6,}-[0-9]{6,}-[A-Za-z0-9]{10,}\b/,
     redactPattern: /\bxapp-[0-9A-Za-z-]{8,}\b/g,
     redactWith: "xapp-...[redacted]",
     title: "Slack app-level token is present",
@@ -129,6 +132,17 @@ export const SECRET_TOKEN_RULES = [
 export function redact(value) {
   let result = String(value);
   for (const rule of SECRET_TOKEN_RULES) {
+    if (rule.id === "secret.private_key") {
+      if (!result.includes("PRIVATE KEY-----")) {
+        continue;
+      }
+      if (result.includes("-----END ")) {
+        result = result.replace(rule.redactPattern, rule.redactWith);
+      }
+      // Also mask single-line escaped or truncated PEM bodies that lack an END marker.
+      result = result.replace(PRIVATE_KEY_SINGLE_LINE_REDACT, rule.redactWith);
+      continue;
+    }
     result = result.replace(rule.redactPattern, rule.redactWith);
   }
   return result;
@@ -146,11 +160,29 @@ export function splitLines(content) {
  * "change-this-for-remote-admin", which the earlier "changeme" pattern missed.
  * GitHub Actions template expressions (`${{ secrets.X }}`) reference secret
  * storage instead of containing a secret, so they are placeholders too.
+ * Word/separator boundaries ensure real-looking tokens such as `test_live_...`
+ * or `sampleSecret123` are not dismissed as placeholders.
  */
-const PLACEHOLDER_VALUE_PATTERN = /^(example|sample|changeme|change[-_]|replace[-_]|placeholder|dummy|test|todo|xxx+|your[-_]?|<|fill[-_]?in|insert[-_]|\$\{\{)/i;
+const PLACEHOLDER_VALUE_PATTERN =
+  /^(?:(?:example|sample|changeme|placeholder|dummy|todo)(?:$|[-_.\s])|test(?:$|-(?:token|key|secret|password|value)\b)|change[-_]|replace[-_]|xxx+(?:$|[-_.\s])|your(?:$|[-_.\s])|<|fill[-_]?in|insert[-_]|\$\{\{)/i;
+const CAMEL_YOUR_PATTERN = /^your[A-Z]/;
 
 export function looksLikePlaceholderValue(value) {
-  return PLACEHOLDER_VALUE_PATTERN.test(String(value).trim());
+  const trimmed = String(value).trim();
+  return PLACEHOLDER_VALUE_PATTERN.test(trimmed) || CAMEL_YOUR_PATTERN.test(trimmed);
+}
+
+/**
+ * Full-string environment or input variable references (`$VAR`, `${VAR}`,
+ * `${VAR:-}`, `${env:VAR}`, `${input:id}`, `%VAR%`, `process.env.VAR`).
+ * Anchored at both ends so literal secrets starting with `$` (`$uperSecret123`)
+ * or default-value fallbacks (`${API_KEY:-real_secret}`) are still flagged.
+ */
+const ENV_REFERENCE_PATTERN =
+  /^(?:\$[A-Za-z_][A-Za-z0-9_]*|\$\{(?:(?:env|input):)?[A-Za-z0-9_.-]+(?::-)?\}|%[A-Za-z_][A-Za-z0-9_]*%|(?:process\.env|env|secrets|vars)\.[A-Za-z_][A-Za-z0-9_]*)$/;
+
+export function isEnvironmentReference(value) {
+  return ENV_REFERENCE_PATTERN.test(String(value).trim());
 }
 
 /**

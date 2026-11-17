@@ -1,5 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Hephaestus-DevKit/agentready/main/schema/agentready-result.schema.json",
   "title": "AgentReady scan result",
   "type": "object",
   "additionalProperties": true,
@@ -62,7 +63,11 @@
           }
         },
         "severityOverrides": {
-          "type": "object"
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "enum": ["high", "medium", "low", "info"]
+          }
         },
         "maxFileBytes": {
           "type": "integer",

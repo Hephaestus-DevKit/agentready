@@ -1,10 +1,20 @@
-import { createLineFinder, looksLikePlaceholderValue, redact } from "./utils.js";
+import {
+  createLineFinder,
+  isEnvironmentReference,
+  looksLikePlaceholderValue,
+  redact,
+  splitLines
+} from "./utils.js";
 
 export const MCP_CONFIG_NAMES = new Set([
   "claude_desktop_config.json",
+  "claude_desktop_config.jsonc",
   ".mcp.json",
+  ".mcp.jsonc",
   "mcp.json",
-  "mcp-config.json"
+  "mcp.jsonc",
+  "mcp-config.json",
+  "mcp-config.jsonc"
 ]);
 
 export function isMcpConfigPath(relativePath, basename) {
@@ -12,12 +22,15 @@ export function isMcpConfigPath(relativePath, basename) {
   if (MCP_CONFIG_NAMES.has(lowerBasename)) {
     return true;
   }
-  if (/^\.?mcp[-_.]/.test(lowerBasename) && lowerBasename.endsWith(".json")) {
+  if (/^\.?mcp[-_.]/.test(lowerBasename) && /\.(?:json|jsonc)$/.test(lowerBasename)) {
     return true;
   }
   // Match mcp/, .mcp/, mcp-servers/ directory segments anywhere in the path,
   // but not names that merely start with "mcp" (e.g. mcparse/).
-  const directorySegments = relativePath.split("/").slice(0, -1);
+  if (!/\.(?:json|jsonc)$/.test(lowerBasename)) {
+    return false;
+  }
+  const directorySegments = String(relativePath).replaceAll("\\", "/").split("/").slice(0, -1);
   return directorySegments.some((segment) => /^\.?mcp(?:$|[-_])/i.test(segment));
 }
 
@@ -26,65 +39,72 @@ export function scanMcpConfig(relativePath, basename, content) {
     return [];
   }
 
-  let parsed = null;
-  try {
-    parsed = JSON.parse(content);
-  } catch {
+  const parsed = parseJsonOrJsonc(content);
+  if (!parsed || typeof parsed !== "object") {
     return [];
   }
 
   const findings = [];
   const findLineIn = createLineFinder(content);
-  const stringValues = collectJsonStrings(parsed);
-  const entries = collectJsonEntries(parsed);
+  const lines = splitLines(content);
+  const findCaseInsensitiveLine = (needle) => {
+    const lower = String(needle).toLowerCase();
+    for (let index = 0; index < lines.length; index += 1) {
+      if (lines[index].toLowerCase().includes(lower)) {
+        return index + 1;
+      }
+    }
+    return null;
+  };
+  const findJsonTokenLine = (rawValue) =>
+    findLineIn(JSON.stringify(rawValue)) ?? findLineIn(rawValue);
 
-  const shellCommand = findShellCommand(entries);
-  if (shellCommand) {
+  const entries = collectJsonEntries(parsed);
+  const stringValues = collectNonSchemaStrings(parsed);
+
+  for (const shellCommand of findShellCommands(entries)) {
     findings.push({
       id: "mcp.shell_tool",
       severity: "medium",
       title: "MCP configuration can launch a shell",
       file: relativePath,
-      line: findLineIn(shellCommand),
-      evidence: `Shell command "${shellCommand}" found in MCP configuration.`,
+      line: findJsonTokenLine(shellCommand),
+      evidence: `Shell command "${redact(shellCommand)}" found in MCP configuration.`,
       recommendation: "Restrict shell-capable MCP servers and require human approval for destructive commands."
     });
   }
 
-  const broadPath = stringValues.find(isBroadFilesystemPath);
-  if (broadPath) {
+  for (const broadPath of findBroadFilesystemPaths(stringValues)) {
     findings.push({
       id: "mcp.broad_filesystem",
       severity: "medium",
       title: "MCP configuration may expose broad filesystem access",
       file: relativePath,
-      line: findLineIn(broadPath),
+      line: findJsonTokenLine(broadPath),
       evidence: `Broad filesystem path "${broadPath.trim()}" found in MCP configuration.`,
       recommendation: "Limit filesystem MCP servers to the smallest project-specific directories."
     });
   }
 
-  const inlineSecret = findInlineSecretEntry(entries);
-  if (inlineSecret) {
+  for (const inlineSecret of findInlineSecretEntries(entries)) {
     findings.push({
       id: "mcp.inline_secret",
       severity: "high",
       title: "MCP configuration appears to contain inline secret values",
       file: relativePath,
-      line: findLineIn(inlineSecret.key),
+      line: findJsonTokenLine(inlineSecret.key),
       evidence: `Secret-like inline value assigned to "${inlineSecret.key}" in MCP configuration.`,
       recommendation: "Move secrets out of MCP config files and inject them through scoped environment secret storage."
     });
   }
 
-  const authorizationRisk = findAuthorizationPassthrough(entries);
-  if (authorizationRisk) {
+  for (const authorizationRisk of findAuthorizationPassthroughs(entries)) {
     findings.push({
       id: "mcp.authorization_passthrough",
       severity: "medium",
       title: "MCP configuration forwards authorization headers",
       file: relativePath,
-      line: findLineIn(authorizationRisk.needle),
+      line: findJsonTokenLine(authorizationRisk.needle) ?? findCaseInsensitiveLine(authorizationRisk.needle),
       evidence: "Authorization header or bearer token forwarding found in MCP configuration.",
       recommendation: "Pass credentials only to reviewed MCP servers and prefer scoped, short-lived tokens."
     });
@@ -97,7 +117,7 @@ export function scanMcpConfig(relativePath, basename, content) {
       severity: "medium",
       title: "MCP configuration includes OAuth client settings",
       file: relativePath,
-      line: findLineIn(oauthRisk.needle),
+      line: findJsonTokenLine(oauthRisk.needle),
       evidence: "OAuth client configuration fields found in MCP configuration.",
       recommendation: "Review OAuth scopes, redirect URIs, token storage, and consent flow before exposing this server to agents."
     });
@@ -110,7 +130,7 @@ export function scanMcpConfig(relativePath, basename, content) {
       severity: risk.severity,
       title: risk.title,
       file: relativePath,
-      line: findLineIn(risk.host),
+      line: findLineIn(risk.rawHost) ?? findCaseInsensitiveLine(risk.rawHost) ?? findLineIn(risk.host),
       evidence: risk.evidence,
       recommendation: risk.recommendation
     });
@@ -119,9 +139,101 @@ export function scanMcpConfig(relativePath, basename, content) {
   return findings;
 }
 
+function parseJsonOrJsonc(content) {
+  const withoutBom = String(content).replace(/^\uFEFF/, "");
+  try {
+    return JSON.parse(withoutBom);
+  } catch {
+    try {
+      return JSON.parse(stripJsonc(withoutBom));
+    } catch {
+      return null;
+    }
+  }
+}
+
+// Strip // and /* */ comments and trailing commas outside JSON strings while
+// preserving line breaks so line numbers continue to match the original file.
+function stripJsonc(source) {
+  let out = "";
+  let inString = false;
+  for (let i = 0; i < source.length; i += 1) {
+    const ch = source[i];
+    const next = source[i + 1];
+    if (inString) {
+      out += ch;
+      if (ch === "\\" && i + 1 < source.length) {
+        out += next;
+        i += 1;
+      } else if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      out += ch;
+      continue;
+    }
+    if (ch === "/" && next === "/") {
+      i += 2;
+      while (i < source.length && source[i] !== "\n" && source[i] !== "\r") {
+        i += 1;
+      }
+      i -= 1;
+      continue;
+    }
+    if (ch === "/" && next === "*") {
+      i += 2;
+      while (i < source.length && !(source[i] === "*" && source[i + 1] === "/")) {
+        if (source[i] === "\n" || source[i] === "\r") {
+          out += source[i];
+        }
+        i += 1;
+      }
+      i += 1;
+      continue;
+    }
+    out += ch;
+  }
+
+  // Remove trailing commas outside strings by scanning the comment-free JSON.
+  let cleaned = "";
+  inString = false;
+  for (let i = 0; i < out.length; i += 1) {
+    const ch = out[i];
+    if (inString) {
+      cleaned += ch;
+      if (ch === "\\" && i + 1 < out.length) {
+        cleaned += out[i + 1];
+        i += 1;
+      } else if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      cleaned += ch;
+      continue;
+    }
+    if (ch === ",") {
+      let lookahead = i + 1;
+      while (lookahead < out.length && /\s/.test(out[lookahead])) {
+        lookahead += 1;
+      }
+      if (out[lookahead] === "}" || out[lookahead] === "]") {
+        continue;
+      }
+    }
+    cleaned += ch;
+  }
+  return cleaned;
+}
+
 const MAX_JSON_DEPTH = 50;
 
-function collectJsonStrings(value, collected = [], depth = 0) {
+function collectNonSchemaStrings(value, collected = [], depth = 0) {
   if (depth > MAX_JSON_DEPTH) {
     return collected;
   }
@@ -133,14 +245,17 @@ function collectJsonStrings(value, collected = [], depth = 0) {
 
   if (Array.isArray(value)) {
     for (const item of value) {
-      collectJsonStrings(item, collected, depth + 1);
+      collectNonSchemaStrings(item, collected, depth + 1);
     }
     return collected;
   }
 
   if (value && typeof value === "object") {
-    for (const item of Object.values(value)) {
-      collectJsonStrings(item, collected, depth + 1);
+    for (const [key, item] of Object.entries(value)) {
+      if (key === "$schema") {
+        continue;
+      }
+      collectNonSchemaStrings(item, collected, depth + 1);
     }
   }
 
@@ -180,43 +295,70 @@ const SHELL_COMMAND_NAMES = new Set([
   "sh", "zsh", "dash", "ksh"
 ]);
 
-function findShellCommand(entries) {
+function findShellCommands(entries) {
+  const seen = new Set();
+  const commands = [];
   for (const entry of entries) {
     const key = normalizeKey(entry.key);
     if (key === "command" && typeof entry.value === "string" && isShellExecutable(entry.value)) {
-      return entry.value;
+      if (!seen.has(entry.value)) {
+        seen.add(entry.value);
+        commands.push(entry.value);
+      }
     }
     if (key === "args" && Array.isArray(entry.value)) {
-      const shellArg = entry.value.find((item) => typeof item === "string" && isShellExecutable(item));
-      if (shellArg) {
-        return shellArg;
+      for (const item of entry.value) {
+        if (typeof item === "string" && isShellExecutable(item) && !seen.has(item)) {
+          seen.add(item);
+          commands.push(item);
+        }
       }
     }
   }
-  return null;
+  return commands;
 }
 
 function isShellExecutable(value) {
-  const executable = value.trim().toLowerCase().split(/[\\/]/).pop();
-  return SHELL_COMMAND_NAMES.has(executable);
+  const trimmed = value.trim();
+  const fullTail = trimmed.toLowerCase().split(/[\\/]/).pop();
+  if (SHELL_COMMAND_NAMES.has(fullTail)) {
+    return true;
+  }
+  const firstToken = trimmed.split(/\s+/)[0] || "";
+  const tokenTail = firstToken.replace(/^['"]|['"]$/g, "").toLowerCase().split(/[\\/]/).pop();
+  return SHELL_COMMAND_NAMES.has(tokenTail);
 }
 
-function findInlineSecretEntry(entries) {
-  return entries.find((entry) => isSecretLikeKey(entry.key) && isInlineSecretString(entry.value)) || null;
+function findBroadFilesystemPaths(values) {
+  const seen = new Set();
+  const paths = [];
+  for (const value of values) {
+    if (isBroadFilesystemPath(value) && !seen.has(value)) {
+      seen.add(value);
+      paths.push(value);
+    }
+  }
+  return paths;
 }
 
-function findAuthorizationPassthrough(entries) {
+function findInlineSecretEntries(entries) {
+  return entries.filter((entry) => isSecretLikeKey(entry.key) && isInlineSecretString(entry.value));
+}
+
+function findAuthorizationPassthroughs(entries) {
+  const risks = [];
   for (const entry of entries) {
     if (isAuthorizationHeaderKey(entry.key)) {
-      return { needle: entry.key };
+      risks.push({ needle: entry.key });
+      continue;
     }
 
     if (typeof entry.value === "string" && isBearerValue(entry.value)) {
-      return { needle: entry.value.includes("Bearer") ? "Bearer" : entry.key };
+      risks.push({ needle: entry.value.includes("Bearer") ? "Bearer" : entry.key });
     }
   }
 
-  return null;
+  return risks;
 }
 
 function findOauthClientConfig(entries) {
@@ -297,12 +439,16 @@ function isInlineSecretString(value) {
     return false;
   }
 
-  if (/^(\$\{?(?:env:)?[A-Z_][A-Z0-9_]*\}?|%[A-Z_][A-Z0-9_]*%|process\.env\.|env\.|secrets\.|vars\.)/i.test(trimmed)) {
+  if (isEnvironmentReference(trimmed)) {
     return false;
   }
 
-  if (/^Bearer\s+(\$\{?(?:env:)?[A-Z_][A-Z0-9_]*\}?|%[A-Z_][A-Z0-9_]*%|process\.env\.|env\.|secrets\.|vars\.)/i.test(trimmed)) {
-    return false;
+  const bearerMatch = trimmed.match(/^Bearer\s+(.+)$/i);
+  if (bearerMatch) {
+    const bearerToken = bearerMatch[1].trim();
+    if (looksLikePlaceholderValue(bearerToken) || isEnvironmentReference(bearerToken)) {
+      return false;
+    }
   }
 
   return true;
@@ -346,12 +492,14 @@ function classifyUrlRisks(values) {
       }
 
       const host = parsed.hostname.toLowerCase();
+      const rawHost = extractRawHost(url) || host;
       if (isMetadataHost(host)) {
         pushRisk(risks, seen, {
           id: "mcp.metadata_endpoint",
           severity: "high",
           title: "MCP configuration references a cloud metadata endpoint",
           host,
+          rawHost,
           evidence: `${parsed.protocol}//${redact(host)}`,
           recommendation: "Remove metadata endpoint access from MCP configuration and review whether credentials may be exposed."
         });
@@ -364,6 +512,7 @@ function classifyUrlRisks(values) {
           severity: "medium",
           title: "MCP configuration references a private network URL",
           host,
+          rawHost,
           evidence: `${parsed.protocol}//${redact(host)}`,
           recommendation: "Review private network MCP endpoints and expose only services intended for agent use."
         });
@@ -375,6 +524,7 @@ function classifyUrlRisks(values) {
         severity: "medium",
         title: "MCP configuration references a remote server URL",
         host,
+        rawHost,
         evidence: `${parsed.protocol}//${redact(host)}`,
         recommendation: "Review remote MCP servers before exposing agent tools or repository context."
       });
@@ -405,17 +555,45 @@ function parseUrl(value) {
   }
 }
 
+function extractRawHost(urlString) {
+  const match = String(urlString).match(/^[A-Za-z][A-Za-z0-9+.-]*:\/\/(?:\[([^\]]+)\]|([^/:?#]+))/);
+  return match ? match[1] || match[2] : null;
+}
+
 function isMetadataHost(host) {
+  const normalized = host.replace(/^\[|\]$/g, "").replace(/\.$/, "").toLowerCase();
   return [
     "169.254.169.254",
     "169.254.170.2",
-    "metadata.google.internal"
-  ].includes(host);
+    "100.100.100.200",
+    "metadata.google.internal",
+    "fd00:ec2::254",
+    "::ffff:a9fe:a9fe",
+    "::ffff:a9fe:aa02",
+    "::ffff:169.254.169.254",
+    "::ffff:169.254.170.2"
+  ].includes(normalized);
 }
 
 function isPrivateNetworkHost(host) {
-  const normalizedHost = host.replace(/^\[|\]$/g, "");
-  if (normalizedHost === "localhost" || normalizedHost === "127.0.0.1" || normalizedHost === "::1") {
+  const normalizedHost = host.replace(/^\[|\]$/g, "").replace(/\.$/, "").toLowerCase();
+  if (
+    normalizedHost === "localhost" ||
+    normalizedHost === "0.0.0.0" ||
+    normalizedHost === "127.0.0.1" ||
+    normalizedHost === "::1" ||
+    normalizedHost === "::"
+  ) {
+    return true;
+  }
+
+  // IPv4-mapped IPv6 addresses (`::ffff:7f00:1`, `::ffff:a00:1`, `::ffff:c0a8:101`, `::ffff:ac10:1`..`::ffff:ac1f:1`)
+  if (/^::ffff:(?:7f[0-9a-f]{0,2}:|a[0-9a-f]{0,2}:|c0a8:|ac1[0-9a-f]:|127\.|10\.|192\.168\.)/i.test(normalizedHost)) {
+    return true;
+  }
+
+  // IPv6 Unique Local (`fc00::/7`) and Link-Local (`fe80::/10`)
+  if (/^(?:f[cd][0-9a-f]{2}:|fe[89ab][0-9a-f]:)/i.test(normalizedHost)) {
     return true;
   }
 

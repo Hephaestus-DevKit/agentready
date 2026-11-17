@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased
+
+### Improved
+
+- `.vscode` workspace files (including `.vscode/mcp.json`, JSONC comments, and trailing commas) and composite GitHub Actions (`action.yml` and `.github/actions/**/action.yml`) are now scanned, alongside `.cts`, `.mts`, `.jsonc`, `.tfvars`, `requirements-*.txt` / `requirements/*.txt`, and OpenSSH private key filenames (`id_rsa`, `id_ed25519`, `id_ecdsa`, `id_dsa`).
+- SARIF rules now carry the `"security"` tag, GitHub Code Scanning `security-severity` scores, and per-result `ruleIndex` references, and the composite GitHub Action passes `checkout_path`, keeps `stdout` clean for JSON/SARIF formats, and skips `upload-sarif` when the CLI exits early with a usage or configuration error before writing a report.
+- `docs/RULES.md` now includes the complete 56-rule catalog reference table, enforced by a test against `RULE_CATALOG`.
+- `doctor` now honors `ignoreRules`, `severityOverrides`, `--ignore-rule`, `--ignore-path`, and baseline suppressions for `doctor.*` checks too.
+
+### Fixed
+
+- Baseline matching now uses optimal 1-to-1 augmenting-path matching across `scan --baseline`, `baseline diff`, and `baseline` regeneration: one baseline entry can no longer suppress two findings when a duplicate is inserted above an existing line, and consecutive identical findings that shift lines together no longer report false-positive new/stale diffs.
+- Eliminated raw secret leaks in `github_actions.comment_trigger_run`, `github_actions.artifact_execution`, `github_actions.oidc_cloud_deploy`, `python.unpinned_requirement`, and single-line or `ENCRYPTED` PEM private key evidence, and tightened `secret.slack_app_token` minimum segment lengths so detected tokens are always redacted.
+- Anchored environment-reference and placeholder patterns so literal values such as `$uperSecret...`, non-empty fallbacks `${API_KEY:-real_secret}`, and `test_live_...` are no longer dismissed as placeholders, while VS Code `${input:...}` and empty `${VAR:-}` references remain allowed.
+- Fixed `package.json` scanning when the root JSON value is `null` or non-object (reports `package.invalid_json` instead of throwing `TypeError`), `markdownCode()` stack overflow on large runs of backticks, and oversized sensitive files (`> maxFileBytes`) bypassing `secret.sensitive_filename`.
+- Eliminated polynomial/exponential backtracking in continuation-line joining, multi-wildcard `ignorePaths` globs, `rm` / download-pipe shell regexes, and generic secret assignment scanning; multi-key single-line JSON files in sensitive paths now report every secret assignment instead of stopping at the first key.
+- GitHub Actions scanner: `- run: |` steps no longer swallow sibling `env:` / `shell:` keys at the mapping indent (fixing false `script_injection` alerts on `env:`), folded (`run: >`) and empty-header `run:` blocks join commands before analysis, quoted `"on":` and multiline `on: [...]` triggers are parsed, wrapped/fallback `${{ ... }}` untrusted expressions are caught, and unpinned `docker://` images (without `@sha256:`) and `actions/cache/restore` are recognized.
+- MCP scanner: `"$schema"` URLs no longer trigger `mcp.remote_url`, multiple servers in one config file report all risky entries instead of only the first, shell commands with inline arguments (`/bin/sh -c ...`) are detected, and IPv4-mapped IPv6 / IPv6 metadata and private-network endpoints are classified accurately.
+- Shell & Python scanners: PowerShell `<#` block comments are gated to `.ps1` so `<#` cannot blind `.sh` files, `&` background and `\n` separators plus `/bin/sh` / `dash` / `ksh` pipes are handled, and PEP 508 `;` markers and inline `#` comments in `requirements*.txt` no longer mask unpinned packages.
+- `init --with-ci` now checks every ancestor directory segment with `lstat` so symlinked `.github` or `.github/workflows` directories cannot redirect writes outside the project root, and `init` skips `.agentready.json` when `agentready.config.json` already exists.
+- CLI & config hardening: `config validate` rejects file or missing targets with a helpful `--config` hint, non-string `failOn` and `$schema` values emit validation warnings, `--` end-of-options and `version --help` work, short flags such as `-o` are not consumed as missing option values, and unreadable/directory `--config`, `--baseline`, and `--output` paths exit cleanly without stack traces.
+- Text reports collapse embedded line breaks in single-line fields and strip Unicode bidirectional (Trojan Source) control characters.
+
 ## 1.3.0
 
 ### Fixed

@@ -2,7 +2,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { SEVERITIES } from "./constants.js";
 import { RULE_CATALOG, RULE_DOCS_URL } from "./rules.js";
-import { sortFindings, escapeMarkdown, markdownCode, stripControlChars } from "./utils.js";
+import { sortFindings, escapeMarkdown, markdownCode, stripSingleLine } from "./utils.js";
 import { TOOL_VERSION } from "./version.js";
 
 const TOOL_INFORMATION_URI = "https://github.com/Hephaestus-DevKit/agentready";
@@ -60,6 +60,9 @@ export function formatSarif(result) {
     }
   }
 
+  const ruleList = [...rules.values()];
+  const ruleIndexById = new Map(ruleList.map((rule, index) => [rule.id, index]));
+
   const sarif = {
     version: "2.1.0",
     $schema: "https://json.schemastore.org/sarif-2.1.0.json",
@@ -72,7 +75,7 @@ export function formatSarif(result) {
             version: result.toolVersion || TOOL_VERSION,
             semanticVersion: result.toolVersion || TOOL_VERSION,
             informationUri: TOOL_INFORMATION_URI,
-            rules: [...rules.values()]
+            rules: ruleList
           }
         },
         automationDetails: {
@@ -89,7 +92,7 @@ export function formatSarif(result) {
             uri: toSarifBaseUri(result.root)
           }
         },
-        results: result.findings.map((finding) => toSarifResult(finding))
+        results: result.findings.map((finding) => toSarifResult(finding, ruleIndexById))
       }
     ]
   };
@@ -151,7 +154,7 @@ export function formatText(result, options = {}) {
   const lines = [
     "AgentReady Report",
     ...summaryMetaRows(result).map(([label, value]) =>
-      `${label}: ${label === "Status" ? paint(value, STATUS_COLORS[value]) : stripControlChars(value)}`
+      `${label}: ${label === "Status" ? paint(value, STATUS_COLORS[value]) : stripSingleLine(value)}`
     ),
     `Summary: high=${result.summary.high} medium=${result.summary.medium} low=${result.summary.low} info=${result.summary.info}`,
     ""
@@ -173,7 +176,7 @@ export function formatText(result, options = {}) {
 
   lines.push("Top risks:");
   for (const finding of topRisks(result.findings)) {
-    lines.push(`- [${paint(finding.severity.toUpperCase(), SEVERITY_COLORS[finding.severity])}] ${formatLocation(finding)} ${stripControlChars(finding.title)}`);
+    lines.push(`- [${paint(finding.severity.toUpperCase(), SEVERITY_COLORS[finding.severity])}] ${formatLocation(finding)} ${stripSingleLine(finding.title)}`);
   }
   lines.push("");
 
@@ -249,7 +252,7 @@ function reportHeader(title, rows, markdown) {
 
   return [
     title,
-    ...rows.map(([label, value]) => `${label}: ${stripControlChars(value)}`),
+    ...rows.map(([label, value]) => `${label}: ${stripSingleLine(value)}`),
     ""
   ];
 }
@@ -261,7 +264,7 @@ function appendConfigWarnings(lines, result, markdown) {
 
   lines.push(markdown ? "## Config Warnings" : "Config warnings:", "");
   for (const warning of result.configWarnings) {
-    lines.push(`- ${markdown ? escapeMarkdown(warning) : stripControlChars(warning)}`);
+    lines.push(`- ${markdown ? escapeMarkdown(warning) : stripSingleLine(warning)}`);
   }
   lines.push("");
 }
@@ -323,7 +326,7 @@ function appendTextFindings(lines, findings, groupBy, options) {
   const paint = options.paint || ((text) => text);
   const byCategory = groupBy === "category";
   for (const group of groupFindings(findings, groupBy)) {
-    const label = byCategory ? group.key : paint(group.key.toUpperCase(), SEVERITY_COLORS[group.key]);
+    const label = byCategory ? stripSingleLine(group.key) : paint(group.key.toUpperCase(), SEVERITY_COLORS[group.key]);
     lines.push(`${label} (${group.findings.length})`);
     for (const finding of group.findings) {
       appendTextFinding(lines, finding, options);
@@ -333,22 +336,22 @@ function appendTextFindings(lines, findings, groupBy, options) {
 }
 
 function appendTextFinding(lines, finding, options) {
-  lines.push(`- ${stripControlChars(finding.title)}`);
-  lines.push(`  Rule: ${stripControlChars(finding.id)}`);
+  lines.push(`- ${stripSingleLine(finding.title)}`);
+  lines.push(`  Rule: ${stripSingleLine(finding.id)}`);
   lines.push(`  Severity: ${finding.severity}`);
-  lines.push(`  Category: ${finding.category || "general"}`);
+  lines.push(`  Category: ${stripSingleLine(finding.category || "general")}`);
   if (finding.file) {
     lines.push(`  Location: ${formatLocation(finding)}`);
   }
   if (finding.evidence) {
-    lines.push(`  Evidence: ${stripControlChars(finding.evidence)}`);
+    lines.push(`  Evidence: ${stripSingleLine(finding.evidence)}`);
   }
   if (finding.why) {
-    lines.push(`  Why: ${stripControlChars(finding.why)}`);
+    lines.push(`  Why: ${stripSingleLine(finding.why)}`);
   }
-  lines.push(`  Fix: ${stripControlChars(finding.recommendation)}`);
+  lines.push(`  Fix: ${stripSingleLine(finding.recommendation)}`);
   if (options.verbose && finding.fingerprint) {
-    lines.push(`  Fingerprint: ${finding.fingerprint}`);
+    lines.push(`  Fingerprint: ${stripSingleLine(finding.fingerprint)}`);
   }
 }
 
@@ -372,7 +375,7 @@ function appendBaselineDiffSection(lines, title, findings, markdown) {
     return;
   }
   for (const finding of findings) {
-    lines.push(`- [${finding.severity.toUpperCase()}] ${formatLocation(finding)} ${stripControlChars(finding.title)} (${stripControlChars(finding.id)})`);
+    lines.push(`- [${finding.severity.toUpperCase()}] ${formatLocation(finding)} ${stripSingleLine(finding.title)} (${stripSingleLine(finding.id)})`);
   }
   lines.push("");
 }
@@ -385,7 +388,7 @@ function appendDebtCounts(lines, title, counts, markdown) {
   }
 
   for (const item of counts) {
-    lines.push(`- ${markdown ? markdownCode(item.key) : stripControlChars(item.key)}: ${item.count}`);
+    lines.push(`- ${markdown ? markdownCode(item.key) : stripSingleLine(item.key)}: ${item.count}`);
   }
   lines.push("");
 }
@@ -403,7 +406,7 @@ function appendDebtFindings(lines, findings, markdown) {
     if (markdown) {
       lines.push(`- **${finding.severity.toUpperCase()}** ${markdownCode(location)} ${escapeMarkdown(finding.title)} (${markdownCode(finding.id)}, age ${age})`);
     } else {
-      lines.push(`- [${finding.severity.toUpperCase()}] ${location} ${stripControlChars(finding.title)} (${stripControlChars(finding.id)}, age ${age})`);
+      lines.push(`- [${finding.severity.toUpperCase()}] ${location} ${stripSingleLine(finding.title)} (${stripSingleLine(finding.id)}, age ${age})`);
     }
   }
   lines.push("");
@@ -417,7 +420,7 @@ function formatLocation(finding) {
   if (!finding.file) {
     return "(project)";
   }
-  return stripControlChars(finding.line ? `${finding.file}:${finding.line}` : finding.file);
+  return stripSingleLine(finding.line ? `${finding.file}:${finding.line}` : finding.file);
 }
 
 function formatConfigPath(config = {}) {
@@ -546,9 +549,17 @@ function nextSteps(result) {
   return steps;
 }
 
-function toSarifResult(finding) {
+const SARIF_SECURITY_SEVERITY = {
+  high: "8.0",
+  medium: "5.0",
+  low: "2.0"
+};
+
+function toSarifResult(finding, ruleIndexById = new Map()) {
+  const ruleIndex = ruleIndexById.get(finding.id);
   const result = {
     ruleId: finding.id,
+    ...(ruleIndex !== undefined ? { ruleIndex } : {}),
     level: toSarifLevel(finding.severity),
     message: {
       text: `${finding.title}. ${finding.recommendation}`
@@ -582,7 +593,7 @@ function toSarifResult(finding) {
     }
   ];
 
-  if (anchor.line) {
+  if (Number.isInteger(anchor.line) && anchor.line >= 1) {
     result.locations[0].physicalLocation.region = {
       startLine: anchor.line
     };
@@ -599,10 +610,16 @@ const PROJECT_FINDING_ANCHORS = {
 };
 const DEFAULT_PROJECT_ANCHOR = "AGENTS.md";
 
-// SARIF artifact locations are URI references: encode each path segment so
-// `#`, `%`, `?`, and spaces in file names keep their literal meaning.
+// SARIF artifact locations are forward-slash URI references: normalize path
+// separators and encode each segment so `#`, `%`, `?`, and spaces in file
+// names keep their literal meaning.
 function toSarifUri(file) {
-  return String(file).split("/").map(encodeURIComponent).join("/");
+  return String(file)
+    .replaceAll("\\", "/")
+    .replace(/^\.\/+/, "")
+    .split("/")
+    .map(encodeURIComponent)
+    .join("/");
 }
 
 function toSarifBaseUri(root) {
@@ -612,6 +629,7 @@ function toSarifBaseUri(root) {
 }
 
 function toSarifRule(rule) {
+  const securitySeverity = SARIF_SECURITY_SEVERITY[rule.defaultSeverity];
   return {
     id: rule.id,
     name: rule.id,
@@ -633,7 +651,8 @@ function toSarifRule(rule) {
       category: rule.category || "general",
       precision: rule.defaultSeverity === "info" ? "medium" : "high",
       severity: rule.defaultSeverity,
-      tags: [rule.category || "general", rule.defaultSeverity]
+      ...(securitySeverity ? { "security-severity": securitySeverity } : {}),
+      tags: ["security", rule.category || "general", rule.defaultSeverity]
     }
   };
 }

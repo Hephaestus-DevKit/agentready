@@ -31,8 +31,8 @@ agentready scan . --summary-only
 ```
 
 The severity summary and CI exit code still use the complete scan result.
-Avoid capping SARIF output when uploading to code scanning unless you
-intentionally want only a subset of results in that system.
+SARIF output is never truncated by `--max-findings` or `--summary-only`, because
+code scanning closes alerts that disappear from an upload.
 
 Use `--max-file-size` or `maxFileBytes` to change the maximum input file size
 AgentReady reads during scans. Skipped files are reported by reason, including

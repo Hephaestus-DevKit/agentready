@@ -1,22 +1,35 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { makeTempDir, repoPath, writeLifecyclePackage } from "./helpers.js";
 import path from "node:path";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { formatJson } from "../src/reporters.js";
 import { scanProject } from "../src/scanner.js";
-import { writeBaseline } from "../src/baseline.js";
+import { runDoctor } from "../src/doctor.js";
+import { runInit } from "../src/init.js";
+import { diffBaseline, loadBaselineFile, writeBaseline, writePrunedBaseline } from "../src/baseline.js";
 
-test("scan result schema matches current JSON contract", async () => {
+test("config schema matches starter config written by init", async () => {
+  const schema = JSON.parse(await readFile(repoPath("schema", "agentready.schema.json"), "utf8"));
+  const root = await makeTempDir("agentready-schema-");
+  await runInit(root, { preset: "strict" });
+  const generatedConfig = JSON.parse(await readFile(path.join(root, ".agentready.json"), "utf8"));
+
+  assertContract(generatedConfig, schema);
+});
+
+test("scan and doctor result schemas match current JSON contract", async () => {
   const schema = JSON.parse(await readFile(repoPath("schema", "agentready-result.schema.json"), "utf8"));
   const root = await makeTempDir("agentready-schema-");
   const result = JSON.parse(formatJson(await scanProject(root)));
+  const doctorResult = JSON.parse(formatJson(await runDoctor(root)));
 
   assert.equal(schema.properties.schemaVersion.const, result.schemaVersion);
   assertContract(result, schema);
+  assertContract(doctorResult, schema);
 });
 
-test("baseline schema matches current baseline contract", async () => {
+test("baseline schema matches written and pruned baseline contracts", async () => {
   const schema = JSON.parse(await readFile(repoPath("schema", "agentready-baseline.schema.json"), "utf8"));
   const root = await makeTempDir("agentready-schema-");
   await writeLifecyclePackage(root);
@@ -24,8 +37,11 @@ test("baseline schema matches current baseline contract", async () => {
   const scan = await scanProject(root);
   const baselinePath = path.join(root, ".agentready-baseline.json");
   const baseline = await writeBaseline(baselinePath, scan);
-
   assertContract(baseline, schema);
+
+  const loaded = await loadBaselineFile(root, ".agentready-baseline.json");
+  const pruned = await writePrunedBaseline(baselinePath, diffBaseline(scan.findings, loaded));
+  assertContract(pruned, schema);
 });
 
 function assertContract(value, schema, rootSchema = schema) {
@@ -52,10 +68,32 @@ function assertContract(value, schema, rootSchema = schema) {
     assertType(value, schema.type);
   }
 
-  if (schema.type === "object" && schema.properties && value && typeof value === "object") {
-    for (const [field, childSchema] of Object.entries(schema.properties)) {
-      if (value[field] !== undefined) {
-        assertContract(value[field], childSchema, rootSchema);
+  if (typeof value === "number" && schema.minimum !== undefined) {
+    assert.ok(value >= schema.minimum, `expected ${value} >= ${schema.minimum}`);
+  }
+
+  if (typeof value === "string" && schema.minLength !== undefined) {
+    assert.ok(value.length >= schema.minLength, `expected length >= ${schema.minLength}`);
+  }
+
+  if (schema.type === "object" && value && typeof value === "object" && !Array.isArray(value)) {
+    if (schema.additionalProperties === false && schema.properties) {
+      for (const field of Object.keys(value)) {
+        assert.ok(Object.hasOwn(schema.properties, field), `unexpected additional property: ${field}`);
+      }
+    }
+    if (schema.properties) {
+      for (const [field, childSchema] of Object.entries(schema.properties)) {
+        if (value[field] !== undefined) {
+          assertContract(value[field], childSchema, rootSchema);
+        }
+      }
+    }
+    if (schema.additionalProperties && typeof schema.additionalProperties === "object") {
+      for (const [field, childValue] of Object.entries(value)) {
+        if (!schema.properties || !Object.hasOwn(schema.properties, field)) {
+          assertContract(childValue, schema.additionalProperties, rootSchema);
+        }
       }
     }
   }

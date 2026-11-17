@@ -2,8 +2,20 @@ import { classifyDangerousCommand } from "./shell.js";
 import { escapeRegExp } from "../utils.js";
 import { redact, splitLines } from "./utils.js";
 
+function isGitHubActionsFile(relativePath) {
+  const normalized = String(relativePath).replaceAll("\\", "/");
+  if (!/\.(?:yml|yaml)$/i.test(normalized)) {
+    return false;
+  }
+  return (
+    normalized.startsWith(".github/workflows/") ||
+    /^\.github\/actions\/.+\/action\.(?:yml|yaml)$/i.test(normalized) ||
+    /^action\.(?:yml|yaml)$/i.test(normalized)
+  );
+}
+
 export function scanGitHubActions(relativePath, content) {
-  if (!relativePath.startsWith(".github/workflows/") || !/\.(?:yml|yaml)$/i.test(relativePath)) {
+  if (!isGitHubActionsFile(relativePath)) {
     return [];
   }
 
@@ -11,7 +23,11 @@ export function scanGitHubActions(relativePath, content) {
   const lines = splitLines(content);
   let inRunBlock = false;
   let runBlockIndent = 0;
+  let runBlockStyle = "literal";
+  let foldedRunLines = [];
+  let foldedRunStartLine = 0;
   let inOnBlock = false;
+  let inOnFlowArray = false;
   let onBlockIndent = 0;
   const pullRequestTargetLines = [];
   const checkoutUses = [];
@@ -22,6 +38,26 @@ export function scanGitHubActions(relativePath, content) {
   const runCommands = [];
   const idTokenWrites = [];
 
+  const emitRunCommand = (command, commandLine) => {
+    if (!command) {
+      return;
+    }
+    runCommands.push({
+      line: commandLine,
+      command
+    });
+    findings.push(...scanGitHubActionRunCommand(relativePath, command, commandLine));
+    findings.push(...scanRunInjection(relativePath, command, commandLine));
+  };
+
+  const flushFoldedRun = () => {
+    if (foldedRunLines.length > 0) {
+      emitRunCommand(foldedRunLines.join(" "), foldedRunStartLine);
+      foldedRunLines = [];
+      foldedRunStartLine = 0;
+    }
+  };
+
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
     const trimmed = line.trim();
@@ -29,31 +65,45 @@ export function scanGitHubActions(relativePath, content) {
 
     if (inRunBlock) {
       if (!trimmed) {
+        if (runBlockStyle === "folded") {
+          flushFoldedRun();
+        }
         continue;
       }
 
       if (indent <= runBlockIndent) {
+        if (runBlockStyle === "folded") {
+          flushFoldedRun();
+        }
         inRunBlock = false;
       } else {
-        if (!trimmed.startsWith("#")) {
-          // Join backslash continuations so a piped download split across
-          // lines still reads as one command.
-          let command = trimmed;
-          const commandLine = index + 1;
-          while (/\\\s*$/.test(command) && index + 1 < lines.length) {
-            const next = lines[index + 1];
-            if (next.trim() && getIndent(next) <= runBlockIndent) {
-              break;
+        if (runBlockStyle === "folded") {
+          if (!trimmed.startsWith("#")) {
+            if (foldedRunLines.length === 0) {
+              foldedRunStartLine = index + 1;
             }
-            command = command.replace(/\\\s*$/, " ") + next.trim();
-            index += 1;
+            foldedRunLines.push(trimmed);
           }
-          runCommands.push({
-            line: commandLine,
-            command
-          });
-          findings.push(...scanGitHubActionRunCommand(relativePath, command, commandLine));
-          findings.push(...scanRunInjection(relativePath, command, commandLine));
+        } else if (!trimmed.startsWith("#")) {
+          // Join backslash continuations in O(N) so a piped download split
+          // across lines still reads as one command without quadratic re-scans.
+          const commandLine = index + 1;
+          let command = trimmed;
+          if (/\\\s*$/.test(command) && index + 1 < lines.length) {
+            const parts = [command.replace(/\\\s*$/, "").trim()];
+            let rawCurrent = command;
+            while (/\\\s*$/.test(rawCurrent) && index + 1 < lines.length) {
+              const next = lines[index + 1];
+              if (next.trim() && getIndent(next) <= runBlockIndent) {
+                break;
+              }
+              index += 1;
+              rawCurrent = next.trim();
+              parts.push(rawCurrent.replace(/\\\s*$/, "").trim());
+            }
+            command = parts.filter(Boolean).join(" ");
+          }
+          emitRunCommand(command, commandLine);
         }
         continue;
       }
@@ -63,18 +113,23 @@ export function scanGitHubActions(relativePath, content) {
       continue;
     }
 
-    if (inOnBlock && trimmed && indent <= onBlockIndent) {
+    if (inOnBlock && !inOnFlowArray && trimmed && indent <= onBlockIndent) {
       inOnBlock = false;
     }
 
     let reportedPullRequestTarget = false;
-    const onMatch = line.match(/^(\s*)on\s*:\s*(.*)$/);
+    const onMatch = line.match(/^(\s*)(?:on|["']on["'])\s*:\s*(.*)$/);
     if (onMatch) {
       // Strip a trailing comment first: `on:  # PR triggers` still opens a
       // trigger block, and prose in the comment must not register as a trigger.
       const value = stripYamlComment(onMatch[2]).trim();
       if (!value) {
         inOnBlock = true;
+        inOnFlowArray = false;
+        onBlockIndent = indent;
+      } else if (value.includes("[") && !value.includes("]")) {
+        inOnBlock = true;
+        inOnFlowArray = true;
         onBlockIndent = indent;
       }
       if (containsPullRequestTarget(value)) {
@@ -83,14 +138,18 @@ export function scanGitHubActions(relativePath, content) {
         reportedPullRequestTarget = true;
       }
       recordTriggers(triggers, value, index + 1);
-    } else if (inOnBlock && containsPullRequestTarget(stripYamlComment(trimmed))) {
-      findings.push(pullRequestTargetFinding(relativePath, index + 1, trimmed));
-      pullRequestTargetLines.push(index + 1);
-      reportedPullRequestTarget = true;
-    }
-
-    if (inOnBlock) {
-      recordTriggers(triggers, stripYamlComment(trimmed), index + 1);
+    } else if (inOnBlock) {
+      const cleanedTrigger = stripYamlComment(trimmed);
+      if (containsPullRequestTarget(cleanedTrigger)) {
+        findings.push(pullRequestTargetFinding(relativePath, index + 1, trimmed));
+        pullRequestTargetLines.push(index + 1);
+        reportedPullRequestTarget = true;
+      }
+      recordTriggers(triggers, cleanedTrigger, index + 1);
+      if (inOnFlowArray && cleanedTrigger.includes("]")) {
+        inOnBlock = false;
+        inOnFlowArray = false;
+      }
     }
 
     if (!reportedPullRequestTarget && !onMatch && /^\s*pull_request_target\s*:/.test(line)) {
@@ -98,22 +157,22 @@ export function scanGitHubActions(relativePath, content) {
       pullRequestTargetLines.push(index + 1);
     }
 
-    if (/permissions\s*:\s*write-all/.test(line)) {
+    if (/^\s*(?:-\s*)?permissions\s*:\s*["']?write-all["']?(?:\s+#.*)?\s*$/.test(line)) {
       findings.push({
         id: "github_actions.write_all",
         severity: "medium",
         title: "GitHub Actions grants write-all permissions",
         file: relativePath,
         line: index + 1,
-        evidence: line.trim(),
+        evidence: redact(line.trim()),
         recommendation: "Use least-privilege permissions such as contents: read unless write access is required."
       });
     }
 
-    if (/^\s*id-token\s*:\s*write(?:\s+#.*)?\s*$/.test(line)) {
+    if (/^\s*id-token\s*:\s*["']?write["']?\s*,?(?:\s+#.*)?\s*$/.test(line)) {
       idTokenWrites.push({
         line: index + 1,
-        evidence: trimmed
+        evidence: redact(trimmed)
       });
     }
 
@@ -126,7 +185,7 @@ export function scanGitHubActions(relativePath, content) {
         line: index + 1,
         // Block-style evidence stays the trimmed line so existing baseline
         // fingerprints remain valid.
-        evidence: permission.evidence ?? trimmed,
+        evidence: redact(permission.evidence ?? trimmed),
         recommendation: "Use least-privilege permissions and grant write access only to jobs that require it."
       });
     }
@@ -138,25 +197,26 @@ export function scanGitHubActions(relativePath, content) {
         title: "GitHub Actions inherits all caller secrets",
         file: relativePath,
         line: index + 1,
-        evidence: trimmed,
+        evidence: redact(trimmed),
         recommendation: "Pass only the specific secrets required by the reusable workflow."
       });
     }
 
-    if (/persist-credentials\s*:\s*["']?true["']?/.test(line)) {
+    if (/^\s*persist-credentials\s*:\s*["']?true["']?(?:\s+#.*)?\s*$/.test(line)) {
       findings.push({
         id: "github_actions.persist_credentials",
         severity: "low",
         title: "actions/checkout persists credentials",
         file: relativePath,
         line: index + 1,
-        evidence: line.trim(),
+        evidence: redact(line.trim()),
         recommendation: "Set persist-credentials: false when jobs do not need to push to the repository."
       });
     }
 
     const uses = parseUsesReference(line);
     if (uses) {
+      const redactedUses = redact(uses);
       if (isExternalUsesReference(uses) && !isPinnedUsesReference(uses)) {
         findings.push({
           id: "github_actions.unpinned_action",
@@ -164,7 +224,7 @@ export function scanGitHubActions(relativePath, content) {
           title: "GitHub Actions uses a floating external action or reusable workflow reference",
           file: relativePath,
           line: index + 1,
-          evidence: `uses: ${uses}`,
+          evidence: `uses: ${redactedUses}`,
           recommendation: "Use a full commit SHA or reviewed release tag instead of a branch or missing ref."
         });
       }
@@ -172,21 +232,21 @@ export function scanGitHubActions(relativePath, content) {
       if (isCheckoutReference(uses)) {
         checkoutUses.push({
           line: index + 1,
-          evidence: `uses: ${uses}`
+          evidence: `uses: ${redactedUses}`
         });
       }
 
       if (isCacheReference(uses)) {
         cacheUses.push({
           line: index + 1,
-          evidence: `uses: ${uses}`
+          evidence: `uses: ${redactedUses}`
         });
       }
 
       if (isArtifactDownloadReference(uses)) {
         artifactDownloads.push({
           line: index + 1,
-          evidence: `uses: ${uses}`
+          evidence: `uses: ${redactedUses}`
         });
       }
     }
@@ -194,28 +254,32 @@ export function scanGitHubActions(relativePath, content) {
     if (/^\s*restore-keys\s*:/.test(line)) {
       restoreKeys.push({
         line: index + 1,
-        evidence: trimmed
+        evidence: redact(trimmed)
       });
     }
 
-    const runMatch = line.match(/^\s*-?\s*run\s*:\s*(.*)$/);
+    const runMatch = line.match(/^(\s*(?:-\s*)?)run\s*:\s*(.*)$/);
     if (runMatch) {
-      const command = runMatch[1].trim();
-      // Block scalar headers may carry chomping and explicit-indent markers
-      // (`|2`, `>-`) and a trailing comment; all of them start a block.
-      if (/^[>|][0-9+-]{0,2}(?:\s+#.*)?$/.test(command)) {
+      // Use the column of `run:` itself (not `-`) so sibling step keys such as
+      // `env:` or `shell:` at the same mapping level exit the run block cleanly.
+      const runKeyIndent = runMatch[1].length;
+      const command = runMatch[2].trim();
+      const blockHeader = command.match(/^([>|])[0-9+-]{0,2}(?:\s+#.*)?$/);
+      if (blockHeader) {
         inRunBlock = true;
-        runBlockIndent = indent;
+        runBlockIndent = runKeyIndent;
+        runBlockStyle = blockHeader[1] === ">" ? "folded" : "literal";
+      } else if (!command || command.startsWith("#")) {
+        inRunBlock = true;
+        runBlockIndent = runKeyIndent;
+        runBlockStyle = "folded";
       } else {
-        runCommands.push({
-          line: index + 1,
-          command
-        });
-        findings.push(...scanGitHubActionRunCommand(relativePath, command, index + 1));
-        findings.push(...scanRunInjection(relativePath, command, index + 1));
+        emitRunCommand(command, index + 1);
       }
     }
   }
+
+  flushFoldedRun();
 
   if (pullRequestTargetLines.length > 0 && checkoutUses.length > 0) {
     for (const checkout of checkoutUses) {
@@ -244,7 +308,7 @@ export function scanGitHubActions(relativePath, content) {
 }
 
 const WRITE_PERMISSION_SCOPES = "actions|attestations|checks|contents|deployments|discussions|issues|packages|pages|pull-requests|repository-projects|statuses";
-const BLOCK_WRITE_PERMISSION = new RegExp(String.raw`^\s*(${WRITE_PERMISSION_SCOPES})\s*:\s*["']?write["']?(?:\s+#.*)?\s*$`);
+const BLOCK_WRITE_PERMISSION = new RegExp(String.raw`^\s*(${WRITE_PERMISSION_SCOPES})\s*:\s*["']?write["']?(\s*,)?(?:\s+#.*)?\s*$`);
 const FLOW_PERMISSIONS = /^\s*permissions\s*:\s*\{([^}]*)\}/;
 const FLOW_WRITE_PERMISSION = new RegExp(String.raw`(?:^|,)\s*["']?(${WRITE_PERMISSION_SCOPES})["']?\s*:\s*["']?write["']?\s*(?=,|$)`, "g");
 
@@ -257,7 +321,7 @@ const FLOW_WRITE_PERMISSION = new RegExp(String.raw`(?:^|,)\s*["']?(${WRITE_PERM
 function findWritePermissions(line) {
   const block = line.match(BLOCK_WRITE_PERMISSION);
   if (block) {
-    return [{ name: block[1] }];
+    return [{ name: block[1], ...(block[2] ? { evidence: `${block[1]}: write` } : {}) }];
   }
 
   const flow = line.match(FLOW_PERMISSIONS);
@@ -272,20 +336,24 @@ function findWritePermissions(line) {
 
 // Context values an outside contributor controls (issue/PR titles, bodies,
 // branch names, commit messages, ...), per GitHub's script-injection guidance.
-// Interpolating them into a `run:` script lets that text execute as shell.
+// Matched anywhere inside a `${{ ... }}` expression so wrappers such as
+// `format(...)`, `toJSON(...)`, `||`, or bracket access cannot mask injection.
+const UNTRUSTED_PROP = (names) => String.raw`(?:\.(?:${names})\b|\[\s*['"](?:${names})['"]\s*\])`;
 const UNTRUSTED_CONTEXT = new RegExp(
-  String.raw`\$\{\{\s*(?:github\.head_ref|github\.event\.(?:` +
+  String.raw`\$\{\{(?:(?!\}\})[\s\S])*\b(?:github\.head_ref\b|github\.event` +
+    String.raw`(?:\.(?:` +
     [
-      String.raw`issue\.(?:title|body)`,
-      String.raw`pull_request\.(?:title|body|head\.(?:ref|label|repo\.default_branch))`,
-      String.raw`(?:comment|review|review_comment)\.body`,
-      String.raw`discussion\.(?:title|body)`,
-      String.raw`pages\.[^}\s]*\.page_name`,
-      String.raw`commits\.[^}\s]*\.(?:message|author\.(?:email|name))`,
-      String.raw`head_commit\.(?:message|author\.(?:email|name)|committer\.(?:email|name))`,
-      String.raw`workflow_run\.(?:head_branch|head_commit\.(?:message|author\.(?:email|name))|pull_requests\.[^}\s]*\.head\.(?:ref|repo\.name))`
+      String.raw`issue${UNTRUSTED_PROP("title|body")}`,
+      String.raw`pull_request(?:\.head(?:\.(?:ref|label)\b|\.repo\.(?:default_branch|name)\b)|${UNTRUSTED_PROP("title|body")})`,
+      String.raw`(?:comment|review|review_comment|discussion_comment|release)${UNTRUSTED_PROP("body")}`,
+      String.raw`discussion${UNTRUSTED_PROP("title|body")}`,
+      String.raw`pages\.[^}\s]*${UNTRUSTED_PROP("page_name")}`,
+      String.raw`commits\.[^}\s]*(?:${UNTRUSTED_PROP("message")}|\.author${UNTRUSTED_PROP("email|name")})`,
+      String.raw`head_commit(?:${UNTRUSTED_PROP("message")}|\.(?:author|committer)${UNTRUSTED_PROP("email|name")})`,
+      String.raw`workflow_run(?:\.head_branch\b|\.head_commit(?:${UNTRUSTED_PROP("message")}|\.author${UNTRUSTED_PROP("email|name")})|\.pull_requests\.[^}\s]*\.head\.(?:ref|repo\.name)\b)`
     ].join("|") +
-    String.raw`))\s*\}\}`
+    String.raw`)))` +
+    String.raw`(?:(?!\}\})[\s\S])*\}\}`
 );
 
 function scanRunInjection(relativePath, command, line) {
@@ -345,7 +413,7 @@ function scanWorkflowLevelRisks(relativePath, context) {
       title: "Comment-triggered workflow runs shell commands",
       file: relativePath,
       line: context.runCommands[0].line,
-      evidence: context.runCommands[0].command,
+      evidence: redact(context.runCommands[0].command),
       recommendation: "Gate comment-triggered commands behind explicit maintainer authorization and avoid running untrusted input."
     });
   }
@@ -372,7 +440,7 @@ function scanWorkflowLevelRisks(relativePath, context) {
       title: "Workflow downloads artifacts and executes commands",
       file: relativePath,
       line: artifactExecution.line,
-      evidence: artifactExecution.command,
+      evidence: redact(artifactExecution.command),
       recommendation: "Do not execute downloaded artifacts unless their producer workflow and contents are trusted."
     });
   }
@@ -387,7 +455,7 @@ function scanWorkflowLevelRisks(relativePath, context) {
       title: "Workflow grants OIDC tokens and runs cloud deployment commands",
       file: relativePath,
       line: cloudDeploy.line,
-      evidence: cloudDeploy.command,
+      evidence: redact(cloudDeploy.command),
       recommendation: "Constrain cloud OIDC trust policies to specific refs, environments, repositories, and audiences."
     });
   }
@@ -452,16 +520,27 @@ function parseUsesReference(line) {
 }
 
 function isExternalUsesReference(value) {
-  return !value.startsWith("./") && !value.startsWith("../") && !value.startsWith("docker://");
+  return !value.startsWith("./") && !value.startsWith("../");
 }
 
 function isPinnedUsesReference(value) {
+  if (value.startsWith("docker://")) {
+    return /@sha256:[a-f0-9]{64}$/i.test(value);
+  }
   const atIndex = value.lastIndexOf("@");
   if (atIndex === -1) {
     return false;
   }
   const ref = value.slice(atIndex + 1);
-  return /^[a-f0-9]{40}$/i.test(ref) || /^v?\d+(?:\.\d+){0,2}(?:[-+][A-Za-z0-9.-]+)?$/.test(ref);
+  if (/^[a-f0-9]{40}$/i.test(ref)) {
+    return true;
+  }
+  // Reject 7+ digit bare numbers (`@1234567`), which are truncated commit SHAs
+  // that happen to contain only decimal digits, not major release tags.
+  if (/^\d{5,}$/.test(ref)) {
+    return false;
+  }
+  return /^v?\d+(?:\.\d+){0,2}(?:[-+][A-Za-z0-9.-]+)?$/.test(ref);
 }
 
 function isCheckoutReference(value) {
@@ -469,7 +548,7 @@ function isCheckoutReference(value) {
 }
 
 function isCacheReference(value) {
-  return /^actions\/cache(?:@|$)/i.test(value);
+  return /^actions\/cache(?:\/restore)?(?:@|$)/i.test(value);
 }
 
 function isArtifactDownloadReference(value) {

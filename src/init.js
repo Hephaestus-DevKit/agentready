@@ -114,7 +114,12 @@ export async function runInit(root, options = {}) {
 
   await ensureFile(root, "AGENTS.md", AGENTS_TEMPLATE, options, messages);
   await ensureFile(root, ".agentignore", agentignore, options, messages);
-  await ensureFile(root, ".agentready.json", config, options, messages);
+  const altConfigStat = await lstat(path.join(root, "agentready.config.json")).catch(() => null);
+  if (altConfigStat && !options.force) {
+    messages.push("Skipped .agentready.json (agentready.config.json already exists)");
+  } else {
+    await ensureFile(root, ".agentready.json", config, options, messages);
+  }
 
   if (options.withCi) {
     await ensureFile(root, path.join(".github", "workflows", "agentready.yml"), CI_WORKFLOW_TEMPLATE, options, messages);
@@ -161,14 +166,21 @@ async function ensureFile(root, relativePath, content, options, messages) {
   const filePath = path.join(root, relativePath);
   const displayPath = relativePath.replaceAll("\\", "/");
 
-  // lstat (not existsSync) so a symlink is seen as a symlink: following it
-  // would create or overwrite a file outside the project, for example when a
-  // cloned repository ships `AGENTS.md -> ~/.ssh/authorized_keys`.
-  const existing = await lstat(filePath).catch(() => null);
-  if (existing?.isSymbolicLink()) {
-    messages.push(`Skipped symbolic link ${displayPath} (refusing to write through it)`);
-    return;
+  // lstat every segment from root to leaf (not just leaf) so a symlinked
+  // intermediate directory such as `.github/workflows -> /outside/dir` cannot
+  // redirect writes outside the project root.
+  const segments = displayPath.split("/").filter(Boolean);
+  let cursor = root;
+  for (const segment of segments) {
+    cursor = path.join(cursor, segment);
+    const segmentStat = await lstat(cursor).catch(() => null);
+    if (segmentStat?.isSymbolicLink()) {
+      messages.push(`Skipped symbolic link ${displayPath} (refusing to write through it)`);
+      return;
+    }
   }
+
+  const existing = await lstat(filePath).catch(() => null);
   const existed = existing !== null;
 
   if (existed && !options.force) {

@@ -1,12 +1,19 @@
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import path from "node:path";
 import { formatCommandPath } from "./command-path.js";
 import { CONFIG_FILE_NAMES } from "./config.js";
+import { usageError } from "./errors.js";
 import { nodeMajor } from "./utils.js";
 import { PACKAGE_NAME } from "./version.js";
 
 export async function runQuickstart(root) {
+  if (!existsSync(root)) {
+    throw usageError(`Quickstart target does not exist: ${root}`);
+  }
+  if (!statSync(root).isDirectory()) {
+    throw usageError(`Quickstart target must be a directory: ${root}`);
+  }
   const packageManager = detectPackageManager(root);
   const runner = packageManager.runner;
   const targetArg = formatCommandPath(root);

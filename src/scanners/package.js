@@ -1,5 +1,18 @@
+import { escapeRegExp } from "../utils.js";
 import { classifyDangerousCommand } from "./shell.js";
-import { createLineFinder, redact } from "./utils.js";
+import { createLineFinder, redact, splitLines } from "./utils.js";
+
+const INVALID_PACKAGE_JSON = (relativePath) => [
+  {
+    id: "package.invalid_json",
+    severity: "low",
+    title: "package.json could not be parsed",
+    file: relativePath,
+    line: null,
+    evidence: "Invalid JSON",
+    recommendation: "Fix package.json so AgentReady and package managers can inspect scripts and dependencies."
+  }
+];
 
 export function scanPackageJson(relativePath, basename, content) {
   if (basename !== "package.json") {
@@ -8,26 +21,30 @@ export function scanPackageJson(relativePath, basename, content) {
 
   let parsed;
   try {
-    parsed = JSON.parse(content);
+    parsed = JSON.parse(content.replace(/^\uFEFF/, ""));
   } catch {
-    return [
-      {
-        id: "package.invalid_json",
-        severity: "low",
-        title: "package.json could not be parsed",
-        file: relativePath,
-        line: null,
-        evidence: "Invalid JSON",
-        recommendation: "Fix package.json so AgentReady and package managers can inspect scripts and dependencies."
-      }
-    ];
+    return INVALID_PACKAGE_JSON(relativePath);
+  }
+
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return INVALID_PACKAGE_JSON(relativePath);
   }
 
   const findings = [];
+  const lines = splitLines(content);
   const findLineIn = createLineFinder(content);
+  const findPropertyLine = (key, fromLine = 1) => {
+    const keyPattern = new RegExp(`^\\s*"${escapeRegExp(key)}"\\s*:`);
+    for (let index = Math.max(0, fromLine - 1); index < lines.length; index += 1) {
+      if (keyPattern.test(lines[index])) {
+        return index + 1;
+      }
+    }
+    return findLineIn(`"${key}"`, fromLine);
+  };
   // Search for script names from the "scripts" block onward, so a dependency
   // with the same name earlier in the file does not steal the line number.
-  const scriptsLine = findLineIn('"scripts"') ?? 1;
+  const scriptsLine = findPropertyLine("scripts") ?? 1;
   // Guard: scripts must be a plain object (not array, string, etc.)
   const scripts =
     parsed.scripts && typeof parsed.scripts === "object" && !Array.isArray(parsed.scripts)
@@ -41,7 +58,7 @@ export function scanPackageJson(relativePath, basename, content) {
         severity: commandFinding.severity,
         title: `Risky npm script: ${name}`,
         file: relativePath,
-        line: findLineIn(`"${name}"`, scriptsLine),
+        line: findPropertyLine(name, scriptsLine),
         evidence: `${name}: ${redact(String(command))}`,
         recommendation: commandFinding.recommendation
       });
@@ -55,7 +72,7 @@ export function scanPackageJson(relativePath, basename, content) {
         severity: "medium",
         title: `Package lifecycle script detected: ${lifecycle}`,
         file: relativePath,
-        line: findLineIn(`"${lifecycle}"`, scriptsLine),
+        line: findPropertyLine(lifecycle, scriptsLine),
         evidence: `${lifecycle}: ${redact(String(scripts[lifecycle]))}`,
         recommendation: "Review lifecycle scripts before allowing agents or CI to install dependencies automatically."
       });

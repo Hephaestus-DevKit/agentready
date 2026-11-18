@@ -26,7 +26,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: Hephaestus-DevKit/agentready@v1.3.0
+      - uses: Hephaestus-DevKit/agentready@v1.4.0
         with:
           fail-on: medium
           format: sarif
